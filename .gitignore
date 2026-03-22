@@ -1,0 +1,11 @@
+.env
+.env.token
+__pycache__
+*.pyc
+.vscode
+.idea
+.venv
+venv/
+env/
+node_modules/
+.DS_Store
