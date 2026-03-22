@@ -17,8 +17,7 @@ from telegram.ext import (
 )
 from bs4 import BeautifulSoup
 import urllib.parse
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
+from aiohttp import web
 
 # Load variables from .env or .env.token
 if os.path.exists(".env"):
@@ -348,7 +347,11 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     if not BOT_TOKEN:
-        logger.error("Error: TELEGRAM_BOT_TOKEN not found.")
+        logger.error("❌ CRITICAL: TELEGRAM_BOT_TOKEN not found in environment variables!")
+        print("❌ CRITICAL: TELEGRAM_BOT_TOKEN not found in environment variables!")
+        # Don't exit, stay alive for 60s so logs can be read in Render
+        import time
+        time.sleep(60) 
         return
         
     application = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -382,29 +385,22 @@ def main():
             webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}"
         )
     else:
-        # --- Start Cloud Run Health Check Server ---
-        # Cloud Run / Render require a port to be listening, even if we are using Poling.
-        class HealthCheckHandler(BaseHTTPRequestHandler):
-            def do_GET(self):
-                self.send_response(200)
-                self.end_headers()
-                self.wfile.write(b"OK")
-            def log_message(self, format, *args): return # Be quiet
-
-        def run_health_check():
-            try:
-                server = HTTPServer(("0.0.0.0", PORT), HealthCheckHandler)
-                logger.info(f"Health check server listening on port {PORT}")
-                server.serve_forever()
-            except Exception as e:
-                logger.error(f"Failed to start health check server: {e}")
-
-        health_thread = threading.Thread(target=run_health_check, daemon=True)
-        health_thread.start()
-        # -------------------------------------------
+        # --- Start Render/Cloud Run Health Check Server using aiohttp ---
+        async def health_check_app():
+            app = web.Application()
+            app.router.add_get('/', lambda r: web.Response(text="Bot is alive!"))
+            runner = web.AppRunner(app)
+            await runner.setup()
+            site = web.TCPSite(runner, '0.0.0.0', PORT)
+            await site.start()
+            logger.info(f"✅ Health check server started on port {PORT}")
+            
+        # Add the health check to the bot's loop
+        loop = asyncio.get_event_loop()
+        loop.create_task(health_check_app())
         
         # Standard Polling for local development
-        logger.info("Bot is starting with Polling...")
+        logger.info(f"Bot is starting with Polling on port {PORT}...")
         application.run_polling()
 
 if __name__ == "__main__":
