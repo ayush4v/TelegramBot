@@ -17,6 +17,8 @@ from telegram.ext import (
 )
 from bs4 import BeautifulSoup
 import urllib.parse
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
 
 # Load variables from .env or .env.token
 if os.path.exists(".env"):
@@ -371,7 +373,7 @@ def main():
     WEBHOOK_URL = os.environ.get("WEBHOOK_URL") 
 
     if WEBHOOK_URL:
-        # Use Webhooks if WEBHOOK_URL is provided (Cloud Run environment)
+        # Use Webhooks if WEBHOOK_URL is provided (Cloud Run environment / Render)
         logger.info(f"Bot is starting with Webhooks on port {PORT}...")
         application.run_webhook(
             listen="0.0.0.0",
@@ -380,6 +382,27 @@ def main():
             webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}"
         )
     else:
+        # --- Start Cloud Run Health Check Server ---
+        # Cloud Run / Render require a port to be listening, even if we are using Poling.
+        class HealthCheckHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"OK")
+            def log_message(self, format, *args): return # Be quiet
+
+        def run_health_check():
+            try:
+                server = HTTPServer(("0.0.0.0", PORT), HealthCheckHandler)
+                logger.info(f"Health check server listening on port {PORT}")
+                server.serve_forever()
+            except Exception as e:
+                logger.error(f"Failed to start health check server: {e}")
+
+        health_thread = threading.Thread(target=run_health_check, daemon=True)
+        health_thread.start()
+        # -------------------------------------------
+        
         # Standard Polling for local development
         logger.info("Bot is starting with Polling...")
         application.run_polling()
