@@ -372,12 +372,14 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
     
     # Cloud Run Webhook Support
-    PORT = int(os.environ.get("PORT", "8080"))
-    WEBHOOK_URL = os.environ.get("WEBHOOK_URL") 
+    PORT = int(os.environ.get("PORT", "10000"))
+    WEBHOOK_URL = os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("WEBHOOK_URL") 
 
     if WEBHOOK_URL:
-        # Use Webhooks if WEBHOOK_URL is provided (Cloud Run environment / Render)
-        logger.info(f"Bot is starting with Webhooks on port {PORT}...")
+        # Use Webhooks if on Render/Cloud Run (High Performance)
+        logger.info(f"✅ Starting in WEBHOOK mode on port {PORT}")
+        logger.info(f"🔗 External URL: {WEBHOOK_URL}")
+        
         application.run_webhook(
             listen="0.0.0.0",
             port=PORT,
@@ -385,22 +387,8 @@ def main():
             webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}"
         )
     else:
-        # --- Start Render/Cloud Run Health Check Server using aiohttp ---
-        async def health_check_app():
-            app = web.Application()
-            app.router.add_get('/', lambda r: web.Response(text="Bot is alive!"))
-            runner = web.AppRunner(app)
-            await runner.setup()
-            site = web.TCPSite(runner, '0.0.0.0', PORT)
-            await site.start()
-            logger.info(f"✅ Health check server started on port {PORT}")
-            
-        # Add the health check to the bot's loop
-        loop = asyncio.get_event_loop()
-        loop.create_task(health_check_app())
-        
-        # Standard Polling for local development
-        logger.info(f"Bot is starting with Polling on port {PORT}...")
+        # Standard Polling for local development (Laptop)
+        logger.info("📡 Starting in POLLING mode (Local Desktop)")
         application.run_polling()
 
 if __name__ == "__main__":
