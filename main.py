@@ -219,7 +219,8 @@ async def search_papers(query: str, limit: int = 6) -> List[dict]:
         try:
             from googlesearch import search
             # Run blocking search in a thread to keep bot responsive
-            gs_results = await asyncio.to_thread(lambda: list(search(f"{query} download pdf", stop=10, pause=1)))
+            # Modern googlesearch uses num_results and sleep_interval
+            gs_results = await asyncio.to_thread(lambda: list(search(f"{query} download pdf", num_results=limit, sleep_interval=1)))
             for link in gs_results:
                 if len(results) >= limit: break
                 title = link.split("/")[-1][:60] or "Direct Resource"
