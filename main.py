@@ -412,16 +412,31 @@ def main():
     PORT = int(os.environ.get("PORT", "10000"))
     
     async def post_init(application):
-        """Starts a health check server if WEBHOOK_URL is missing."""
-        if not (os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("WEBHOOK_URL")):
-            app = web.Application()
-            # Basic health check response for Render
-            app.router.add_get('/', lambda r: web.Response(text="Bot is running!"))
-            runner = web.AppRunner(app)
-            await runner.setup()
-            site = web.TCPSite(runner, '0.0.0.0', PORT)
-            await site.start()
-            logger.info(f"✅ Keep-alive health check server started on port {PORT}")
+        """Ensures the bot is always healthy and tries to stay awake on Render."""
+        # 1. Start Health-Check Server (Guarantees Port Binding)
+        app = web.Application()
+        app.router.add_get('/', lambda r: web.Response(text="Bot is online!"))
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, '0.0.0.0', PORT)
+        await site.start()
+        logger.info(f"✅ Keep-alive server started on port {PORT}")
+
+        # 2. Start Self-Pinger (Best effort to stay awake on Render Free Tier)
+        external_url = os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("WEBHOOK_URL")
+        if external_url:
+            async def self_pinger():
+                while True:
+                    await asyncio.sleep(600) # Ping every 10 minutes
+                    try:
+                        async with aiohttp.ClientSession() as sess:
+                            async with sess.get(external_url, timeout=10) as resp:
+                                logger.info(f"📡 Self-ping status: {resp.status}")
+                    except Exception as pe:
+                        logger.warning(f"⚠️ Self-ping failed: {pe}")
+            
+            asyncio.create_task(self_pinger())
+            logger.info("⚡ Self-pinger task started.")
 
     application = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
     
