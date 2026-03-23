@@ -180,20 +180,21 @@ async def search_papers(query: str, limit: int = 6) -> List[dict]:
         async with session.get(search_url, headers=headers, timeout=6) as response:
             if response.status == 200:
                 html = await response.text()
-                # Switch to built-in parser for better compatibility on Render
                 soup = BeautifulSoup(html, 'html.parser')
                 
                 raw_candidates = []
-                for a in soup.find_all('a', class_='result__a')[:10]:
+                # Try multiple selectors for DDG HTML results
+                search_results = soup.find_all('a', class_='result__a') or soup.select('.result__title a')
+                for a in search_results[:10]:
                     href = a.get('href', '')
                     if "uddg=" in href:
                         href = urllib.parse.parse_qs(urllib.parse.urlparse(href).query).get('uddg', [href])[0]
                     if href.startswith("//"): href = "https:" + href
                     title = a.get_text().strip().replace("PDF", "").strip()[:60]
-                    raw_candidates.append({"title": title, "url": href})
+                    if href and title:
+                        raw_candidates.append({"title": title, "url": href})
 
                 if raw_candidates:
-                    # Parallel resolution
                     tasks = [get_direct_pdf_link(session, res['title'], res['url']) for res in raw_candidates]
                     resolved_results = await asyncio.gather(*tasks)
                     
@@ -209,24 +210,40 @@ async def search_papers(query: str, limit: int = 6) -> List[dict]:
                                 results.append(raw)
                                 seen_urls.add(raw['url'])
             else:
-                logger.error(f"DDG Error Status: {response.status}")
+                logger.error(f"DDG HTTP Error: {response.status}")
     except Exception as e:
-        logger.error(f"Search Exception: {e}")
+        import traceback
+        logger.error(f"Search Exception:\n{traceback.format_exc()}")
 
-    # --- GOOGLE FALLBACK: If DDG is blocked or empty (Crucial!) ---
+    # --- FALLBACK 1: GOOGLE (googlesearch-python) ---
     if not results:
         logger.info(f"🔄 DDG failed. Trying Google Fallback for: {query}")
         try:
             from googlesearch import search
-            # Run blocking search in a thread to keep bot responsive
-            # Modern googlesearch uses num_results and sleep_interval
-            gs_results = await asyncio.to_thread(lambda: list(search(f"{query} download pdf", num_results=limit, sleep_interval=1)))
+            gs_results = await asyncio.to_thread(lambda: list(search(f"{query} pdf download", num_results=10, sleep_interval=1)))
             for link in gs_results:
                 if len(results) >= limit: break
-                title = link.split("/")[-1][:60] or "Direct Resource"
+                title = link.split("/")[-1][:60] or "Resource"
                 results.append({"title": title, "url": link})
         except Exception as ge:
             logger.error(f"Google Fallback failed: {ge}")
+
+    # --- FALLBACK 2: BING (Simple Scraping) ---
+    if not results:
+        logger.info(f"🔄 Google failed. Trying Bing Fallback for: {query}")
+        try:
+            bing_url = f"https://www.bing.com/search?q={urllib.parse.quote(query + ' pdf download')}"
+            async with session.get(bing_url, headers=headers, timeout=6) as b_res:
+                if b_res.status == 200:
+                    b_html = await b_res.text()
+                    b_soup = BeautifulSoup(b_html, 'html.parser')
+                    for b_a in b_soup.select('h2 a')[:8]:
+                        b_url = b_a.get('href')
+                        b_title = b_a.get_text()[:60]
+                        if b_url and b_url.startswith("http"):
+                            results.append({"title": b_title, "url": b_url})
+        except Exception as be:
+            logger.error(f"Bing Fallback failed: {be}")
 
     return results
 
