@@ -4,4 +4,3 @@ googlesearch-python
 requests
 aiohttp
 beautifulsoup4
-lxml

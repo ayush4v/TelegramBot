@@ -157,7 +157,8 @@ async def get_direct_pdf_link(session, title: str, url: str) -> dict:
         async with session.get(url, timeout=5.0) as response:
             if response.status == 200:
                 html = await response.text()
-                soup = BeautifulSoup(html, 'lxml')
+                # Switch to built-in parser for better compatibility on Render
+                soup = BeautifulSoup(html, 'html.parser')
                 # Check for any link ending in .pdf
                 for a in soup.find_all('a', href=True, limit=70):
                     href = a['href']
@@ -179,7 +180,8 @@ async def search_papers(query: str, limit: int = 6) -> List[dict]:
         async with session.get(search_url, headers=headers, timeout=6) as response:
             if response.status == 200:
                 html = await response.text()
-                soup = BeautifulSoup(html, 'lxml')
+                # Switch to built-in parser for better compatibility on Render
+                soup = BeautifulSoup(html, 'html.parser')
                 
                 raw_candidates = []
                 for a in soup.find_all('a', class_='result__a')[:10]:
@@ -373,7 +375,23 @@ def main():
         raise ValueError("TELEGRAM_BOT_TOKEN is not set in environment variables.")
         
     logger.info("🚀 Starting Bot Application...")
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
+    
+    # 🌟 RENDER DEPLOYMENT HACK: Ensures the bot always listens to a Port
+    PORT = int(os.environ.get("PORT", "10000"))
+    
+    async def post_init(application):
+        """Starts a health check server if WEBHOOK_URL is missing."""
+        if not (os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("WEBHOOK_URL")):
+            app = web.Application()
+            # Basic health check response for Render
+            app.router.add_get('/', lambda r: web.Response(text="Bot is running!"))
+            runner = web.AppRunner(app)
+            await runner.setup()
+            site = web.TCPSite(runner, '0.0.0.0', PORT)
+            await site.start()
+            logger.info(f"✅ Keep-alive health check server started on port {PORT}")
+
+    application = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
     
     # Base commands
     application.add_handler(CommandHandler("start", start))
