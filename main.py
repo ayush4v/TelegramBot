@@ -412,31 +412,37 @@ def main():
     PORT = int(os.environ.get("PORT", "10000"))
     
     async def post_init(application):
-        """Ensures the bot is always healthy and tries to stay awake on Render."""
-        # 1. Start Health-Check Server (Guarantees Port Binding)
-        app = web.Application()
-        app.router.add_get('/', lambda r: web.Response(text="Bot is online!"))
-        runner = web.AppRunner(app)
-        await runner.setup()
-        site = web.TCPSite(runner, '0.0.0.0', PORT)
-        await site.start()
-        logger.info(f"✅ Keep-alive server started on port {PORT}")
-
-        # 2. Start Self-Pinger (Best effort to stay awake on Render Free Tier)
+        """Tries to stay awake and ensures port binding based on mode."""
         external_url = os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("WEBHOOK_URL")
+        
+        # 1. Start Health-Check Server ONLY if in Polling Mode (Avoids port conflict)
+        if not external_url:
+            try:
+                app = web.Application()
+                app.router.add_get('/', lambda r: web.Response(text="Bot is online!"))
+                runner = web.AppRunner(app)
+                await runner.setup()
+                site = web.TCPSite(runner, '0.0.0.0', PORT)
+                await site.start()
+                logger.info(f"✅ Polling mode: Keep-alive server started on port {PORT}")
+            except Exception as se:
+                logger.error(f"❌ Failed to start health server: {se}")
+
+        # 2. Start Self-Pinger (Works in both modes to reduce Cold Starts)
         if external_url:
             async def self_pinger():
+                await asyncio.sleep(30) # Wait for startup to complete
                 while True:
-                    await asyncio.sleep(600) # Ping every 10 minutes
                     try:
                         async with aiohttp.ClientSession() as sess:
-                            async with sess.get(external_url, timeout=10) as resp:
-                                logger.info(f"📡 Self-ping status: {resp.status}")
+                            async with sess.get(external_url, timeout=15) as resp:
+                                logger.info(f"📡 Heartbeat (Self-ping): {resp.status}")
                     except Exception as pe:
-                        logger.warning(f"⚠️ Self-ping failed: {pe}")
+                        logger.warning(f"⚠️ Heartbeat failed: {pe}")
+                    await asyncio.sleep(600) # Every 10 minutes
             
             asyncio.create_task(self_pinger())
-            logger.info("⚡ Self-pinger task started.")
+            logger.info(f"⚡ Self-pinger active for: {external_url}")
 
     application = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
     
