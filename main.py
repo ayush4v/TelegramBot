@@ -150,56 +150,58 @@ async def get_session():
     return session_instance
 
 async def get_direct_pdf_link(session, title: str, url: str) -> dict:
-    """Follow a landing page and try to find a direct PDF link (Async Parallel)."""
+    """Follow a landing page and try to find a direct PDF link with a tight 3.5s timeout."""
     if url.lower().endswith(".pdf"): return {"title": title, "url": url}
     try:
-        async with session.get(url, timeout=7) as response:
+        # Lowered timeout to 3.5 seconds for snappier response
+        async with session.get(url, timeout=3.5) as response:
             if response.status == 200:
                 html = await response.text()
+                # Use only top 100 links to avoid BS4 blocking for too long
                 soup = BeautifulSoup(html, 'lxml')
-                for a in soup.find_all('a', href=True):
+                for a in soup.find_all('a', href=True, limit=50):
                     href = a['href']
                     if href.lower().endswith(".pdf"):
                         return {"title": title, "url": urllib.parse.urljoin(url, href)}
     except: pass
     return None
 
-async def search_papers(query: str, limit: int = 8) -> List[dict]:
-    """Blazing fast parallel search with deep-link resolution."""
+async def search_papers(query: str, limit: int = 6) -> List[dict]:
+    """Optimized parallel search with deep-link resolution and faster timeouts."""
     results = []
-    search_query = f"{query} question paper pdf direct download"
+    # More specific query for better results
+    search_query = f"{query} filetype:pdf download"
     search_url = f"https://duckduckgo.com/html/?q={urllib.parse.quote(search_query)}"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"}
     
     try:
         session = await get_session()
-        async with session.get(search_url, headers=headers, timeout=8) as response:
+        async with session.get(search_url, headers=headers, timeout=5) as response:
             if response.status == 200:
                 html = await response.text()
                 soup = BeautifulSoup(html, 'lxml')
                 
                 tasks = []
-                for a in soup.find_all('a', class_='result__a')[:15]: # Take top 15 candidates
+                # Limit to top 8 candidates (sweet spot for speed vs coverage)
+                for a in soup.find_all('a', class_='result__a')[:8]:
                     href = a.get('href', '')
                     if "uddg=" in href:
                         href = urllib.parse.parse_qs(urllib.parse.urlparse(href).query).get('uddg', [href])[0]
                     if href.startswith("//"): href = "https:" + href
                     title = a.get_text().strip().replace("PDF", "").strip()[:50]
                     
-                    # Create parallel task for resolution
                     tasks.append(get_direct_pdf_link(session, title, href))
                 
-                # Execute all tasks in parallel! (The magic of speed)
-                resolved_results = await asyncio.gather(*tasks)
-                
-                # Filter out None and deduplicate
-                seen_urls = set()
-                for res in resolved_results:
-                    if res and res['url'] not in seen_urls:
-                        results.append(res)
-                        seen_urls.add(res['url'])
-                    if len(results) >= limit: break
-    except Exception as e: logger.error(f"Parallel Search Error: {e}")
+                if tasks:
+                    resolved_results = await asyncio.gather(*tasks)
+                    
+                    seen_urls = set()
+                    for res in resolved_results:
+                        if res and res['url'] not in seen_urls:
+                            results.append(res)
+                            seen_urls.add(res['url'])
+                        if len(results) >= limit: break
+    except Exception as e: logger.error(f"Search Error: {e}")
     return results
 
 async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -244,7 +246,10 @@ async def year_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cat_name, exam_name, year = parts[1], parts[2], parts[3]
     
     final_query = f"{exam_name} {year} question paper"
-    await query.edit_message_text(f"⚡ **Fetching {exam_name} ({year})...**", parse_mode="Markdown")
+    await query.edit_message_text(f"⚡ **Searching {exam_name} ({year})...**", parse_mode="Markdown")
+    
+    # Show typing indicator for better UX
+    await context.bot.send_chat_action(chat_id=query.message.chat_id, action="typing")
     
     results = await search_papers(final_query)
     if not results:
@@ -300,6 +305,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # 3. Proceed with search for relevant queries
+    # Show typing indicator
+    await context.bot.send_chat_action(chat_id=update.message.chat_id, action="typing")
     status_msg = await update.message.reply_text(f"🔍 **Searching for:** *{query_text}*", parse_mode="Markdown")
     results = await search_papers(f"{query_text}", limit=8)
     
@@ -319,8 +326,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Refined download handler with informative errors."""
     query = update.callback_query
-    await query.answer("Fetching file...")
+    await query.answer("Preparing download...")
     idx = int(query.data.split("_")[1])
+    
+    # Send 'upload_document' action to show progress
+    await context.bot.send_chat_action(chat_id=query.message.chat_id, action="upload_document")
+    
     results = context.user_data.get('last_results', [])
     
     if idx < len(results):
