@@ -150,16 +150,16 @@ async def get_session():
     return session_instance
 
 async def get_direct_pdf_link(session, title: str, url: str) -> dict:
-    """Follow a landing page and try to find a direct PDF link with a tight 3.5s timeout."""
+    """Try to find a direct PDF link with a 5s timeout."""
     if url.lower().endswith(".pdf"): return {"title": title, "url": url}
     try:
-        # Lowered timeout to 3.5 seconds for snappier response
-        async with session.get(url, timeout=3.5) as response:
+        # Increased timeout to 5 seconds for better reliability on Indian sites
+        async with session.get(url, timeout=5.0) as response:
             if response.status == 200:
                 html = await response.text()
-                # Use only top 100 links to avoid BS4 blocking for too long
                 soup = BeautifulSoup(html, 'lxml')
-                for a in soup.find_all('a', href=True, limit=50):
+                # Check for any link ending in .pdf
+                for a in soup.find_all('a', href=True, limit=70):
                     href = a['href']
                     if href.lower().endswith(".pdf"):
                         return {"title": title, "url": urllib.parse.urljoin(url, href)}
@@ -167,40 +167,49 @@ async def get_direct_pdf_link(session, title: str, url: str) -> dict:
     return None
 
 async def search_papers(query: str, limit: int = 6) -> List[dict]:
-    """Optimized parallel search with deep-link resolution and faster timeouts."""
+    """Search papers with fallback to raw search results if resolution fails."""
     results = []
-    # More specific query for better results
-    search_query = f"{query} filetype:pdf download"
+    # More standard query for broader results
+    search_query = f"{query} question paper pdf download"
     search_url = f"https://duckduckgo.com/html/?q={urllib.parse.quote(search_query)}"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"}
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/121.0.0.0 Safari/537.36"}
     
     try:
         session = await get_session()
-        async with session.get(search_url, headers=headers, timeout=5) as response:
+        async with session.get(search_url, headers=headers, timeout=6) as response:
             if response.status == 200:
                 html = await response.text()
                 soup = BeautifulSoup(html, 'lxml')
                 
-                tasks = []
-                # Limit to top 8 candidates (sweet spot for speed vs coverage)
-                for a in soup.find_all('a', class_='result__a')[:8]:
+                raw_candidates = []
+                for a in soup.find_all('a', class_='result__a')[:10]:
                     href = a.get('href', '')
                     if "uddg=" in href:
                         href = urllib.parse.parse_qs(urllib.parse.urlparse(href).query).get('uddg', [href])[0]
                     if href.startswith("//"): href = "https:" + href
-                    title = a.get_text().strip().replace("PDF", "").strip()[:50]
-                    
-                    tasks.append(get_direct_pdf_link(session, title, href))
+                    title = a.get_text().strip().replace("PDF", "").strip()[:60]
+                    raw_candidates.append({"title": title, "url": href})
+
+                if not raw_candidates: return []
+
+                # Parallel resolution
+                tasks = [get_direct_pdf_link(session, res['title'], res['url']) for res in raw_candidates]
+                resolved_results = await asyncio.gather(*tasks)
                 
-                if tasks:
-                    resolved_results = await asyncio.gather(*tasks)
-                    
-                    seen_urls = set()
-                    for res in resolved_results:
-                        if res and res['url'] not in seen_urls:
-                            results.append(res)
-                            seen_urls.add(res['url'])
-                        if len(results) >= limit: break
+                seen_urls = set()
+                # First pass: Add successfully resolved PDF links
+                for res in resolved_results:
+                    if res and res['url'] not in seen_urls:
+                        results.append(res)
+                        seen_urls.add(res['url'])
+                
+                # Second pass: If we have space, add original links that look promising
+                if len(results) < limit:
+                    for raw in raw_candidates:
+                        if raw['url'] not in seen_urls and len(results) < limit:
+                            results.append(raw)
+                            seen_urls.add(raw['url'])
+
     except Exception as e: logger.error(f"Search Error: {e}")
     return results
 
