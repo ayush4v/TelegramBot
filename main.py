@@ -170,8 +170,8 @@ async def get_direct_pdf_link(session, title: str, url: str) -> dict:
 async def search_papers(query: str, limit: int = 6) -> List[dict]:
     """Search papers with fallback to raw search results if resolution fails."""
     results = []
-    # More standard query for broader results
-    search_query = f"{query} question paper pdf download"
+    # Clean query to avoid duplicate keywords
+    search_query = f"{query} pdf download"
     search_url = f"https://duckduckgo.com/html/?q={urllib.parse.quote(search_query)}"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/121.0.0.0 Safari/537.36"}
     
@@ -192,27 +192,41 @@ async def search_papers(query: str, limit: int = 6) -> List[dict]:
                     title = a.get_text().strip().replace("PDF", "").strip()[:60]
                     raw_candidates.append({"title": title, "url": href})
 
-                if not raw_candidates: return []
+                if raw_candidates:
+                    # Parallel resolution
+                    tasks = [get_direct_pdf_link(session, res['title'], res['url']) for res in raw_candidates]
+                    resolved_results = await asyncio.gather(*tasks)
+                    
+                    seen_urls = set()
+                    for res in resolved_results:
+                        if res and res['url'] not in seen_urls:
+                            results.append(res)
+                            seen_urls.add(res['url'])
+                    
+                    if len(results) < limit:
+                        for raw in raw_candidates:
+                            if raw['url'] not in seen_urls and len(results) < limit:
+                                results.append(raw)
+                                seen_urls.add(raw['url'])
+            else:
+                logger.error(f"DDG Error Status: {response.status}")
+    except Exception as e:
+        logger.error(f"Search Exception: {e}")
 
-                # Parallel resolution
-                tasks = [get_direct_pdf_link(session, res['title'], res['url']) for res in raw_candidates]
-                resolved_results = await asyncio.gather(*tasks)
-                
-                seen_urls = set()
-                # First pass: Add successfully resolved PDF links
-                for res in resolved_results:
-                    if res and res['url'] not in seen_urls:
-                        results.append(res)
-                        seen_urls.add(res['url'])
-                
-                # Second pass: If we have space, add original links that look promising
-                if len(results) < limit:
-                    for raw in raw_candidates:
-                        if raw['url'] not in seen_urls and len(results) < limit:
-                            results.append(raw)
-                            seen_urls.add(raw['url'])
+    # --- GOOGLE FALLBACK: If DDG is blocked or empty (Crucial!) ---
+    if not results:
+        logger.info(f"🔄 DDG failed. Trying Google Fallback for: {query}")
+        try:
+            from googlesearch import search
+            # Run blocking search in a thread to keep bot responsive
+            gs_results = await asyncio.to_thread(lambda: list(search(f"{query} download pdf", stop=10, pause=1)))
+            for link in gs_results:
+                if len(results) >= limit: break
+                title = link.split("/")[-1][:60] or "Direct Resource"
+                results.append({"title": title, "url": link})
+        except Exception as ge:
+            logger.error(f"Google Fallback failed: {ge}")
 
-    except Exception as e: logger.error(f"Search Error: {e}")
     return results
 
 async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -256,7 +270,7 @@ async def year_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     parts = query.data.split("_")
     cat_name, exam_name, year = parts[1], parts[2], parts[3]
     
-    final_query = f"{exam_name} {year} question paper"
+    final_query = f"{exam_name} {year}"
     await query.edit_message_text(f"⚡ **Searching {exam_name} ({year})...**", parse_mode="Markdown")
     
     # Show typing indicator for better UX
