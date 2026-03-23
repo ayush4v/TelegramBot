@@ -367,13 +367,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     if not BOT_TOKEN:
-        logger.error("❌ CRITICAL: TELEGRAM_BOT_TOKEN not found in environment variables!")
-        print("❌ CRITICAL: TELEGRAM_BOT_TOKEN not found in environment variables!")
-        # Don't exit, stay alive for 60s so logs can be read in Render
-        import time
-        time.sleep(60) 
-        return
+        logger.error("❌ ERROR: TELEGRAM_BOT_TOKEN is missing!")
+        print("❌ ERROR: TELEGRAM_BOT_TOKEN is missing!")
+        # If no token, raise an error so Render logs capture it properly
+        raise ValueError("TELEGRAM_BOT_TOKEN is not set in environment variables.")
         
+    logger.info("🚀 Starting Bot Application...")
     application = ApplicationBuilder().token(BOT_TOKEN).build()
     
     # Base commands
