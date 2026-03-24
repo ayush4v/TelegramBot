@@ -344,18 +344,25 @@ async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.
                         
                         score = 0
                         # Boost score based on URL and text indicators
-                        if full_link.lower().endswith(".pdf"): score += 15
-                        if "pdf" in full_link.lower(): score += 5
+                        if full_link.lower().endswith(".pdf"): score += 20
+                        if "pdf" in full_link.lower(): score += 10
                         if "download" in full_link.lower(): score += 5
                         if "paper" in full_link.lower(): score += 3
+                        
+                        # Platform boosts (Trusted PYQ sources)
+                        trusted_sites = ["aglasem", "byjus", "careers360", "collegedunia", "shiksha", "vedantu", "sarkariexam", "sarkariresult"]
+                        if any(site in full_link.lower() for site in trusted_sites):
+                            score += 15
+                        
                         # Text triggers
-                        if "download" in text and "pdf" in text: score += 10
-                        if "click" in text and "here" in text: score += 2
+                        if "download" in text and ("pdf" in text or "paper" in text): score += 12
+                        if "click" in text and "here" in text: score += 5
                         if "direct" in text: score += 5
                         if "official" in text: score += 3
+                        if "solution" in text: score += 4
 
                         # Filter out common garbage
-                        if score > 0 and not any(x in full_link.lower() for x in ["social", "login", "signup", "contact", "about"]):
+                        if score > 0 and not any(x in full_link.lower() for x in ["social", "login", "signup", "contact", "about", "register", "policy"]):
                             candidates.append((score, full_link))
 
                     # Deduplicate and sort
