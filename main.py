@@ -83,7 +83,7 @@ YEARS = ["2024", "2023", "2022", "2021", "2020", "2019", "2018", "Older"]
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Shows main categories."""
     text = (
-        "👋 **Welcome to the Professional Exam Assistant Bot**\n\n"
+        "👋 **Welcome to the Professional Exam Assistant Bot v5.0 Ultra**\n\n"
         "I can help you find and download Previous Year Question Papers (PYQs) for almost all major Indian exams.\n\n"
         "Please select an **Exam Category** below to get started:"
     )
@@ -154,16 +154,46 @@ async def get_direct_pdf_link(session, title: str, url: str) -> dict:
     if url.lower().endswith(".pdf"): return {"title": title, "url": url}
     try:
         # Increased timeout to 5 seconds for better reliability on Indian sites
-        async with session.get(url, timeout=5.0) as response:
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/121.0.0.0 Safari/537.36"}
+        async with session.get(url, timeout=5.0, headers=headers) as response:
             if response.status == 200:
+                # 1. If the URL itself serves a PDF (checked by content-type)
+                ctype = response.headers.get("Content-Type", "").lower()
+                if "pdf" in ctype: return {"title": title, "url": url}
+
+                # 2. Handle common PDF viewer redirects
+                if "google.com/viewer" in url or "docs.google.com/viewer" in url:
+                    parsed = urllib.parse.urlparse(url)
+                    qs = urllib.parse.parse_qs(parsed.query)
+                    if 'url' in qs:
+                        pdf_url = qs['url'][0]
+                        if not pdf_url.startswith("http"): pdf_url = "https://" + pdf_url
+                        return {"title": title, "url": pdf_url}
+
                 html = await response.text()
-                # Switch to built-in parser for better compatibility on Render
                 soup = BeautifulSoup(html, 'html.parser')
-                # Check for any link ending in .pdf
-                for a in soup.find_all('a', href=True, limit=70):
-                    href = a['href']
-                    if href.lower().endswith(".pdf"):
-                        return {"title": title, "url": urllib.parse.urljoin(url, href)}
+                
+                # Broaden the search for PDF candidates
+                candidates = []
+                for a in soup.find_all(['a', 'iframe'], href=True, src=True, limit=120):
+                    link = a.get('href') or a.get('src')
+                    if not link: continue
+                    full_url = urllib.parse.urljoin(url, link)
+                    
+                    # Score the link
+                    score = 0
+                    if full_url.lower().endswith(".pdf"): score += 10
+                    if "pdf" in full_url.lower(): score += 5
+                    if "download" in full_url.lower(): score += 3
+                    if "paper" in full_url.lower(): score += 2
+                    
+                    if score > 0:
+                        candidates.append((score, full_url))
+                
+                if candidates:
+                    # Sort by score descending
+                    candidates.sort(key=lambda x: x[0], reverse=True)
+                    return {"title": title, "url": candidates[0][1]}
     except: pass
     return None
 
@@ -171,7 +201,8 @@ async def search_papers(query: str, limit: int = 6) -> List[dict]:
     """Search papers with fallback to raw search results if resolution fails."""
     results = []
     # Clean query to avoid duplicate keywords
-    search_query = f"{query} pdf download"
+    # Prioritize filetype:pdf which is highly effective on Google & others
+    search_query = f"{query} filetype:pdf OR ext:pdf OR pdf download"
     search_url = f"https://duckduckgo.com/html/?q={urllib.parse.quote(search_query)}"
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/121.0.0.0 Safari/537.36"}
     
@@ -220,11 +251,14 @@ async def search_papers(query: str, limit: int = 6) -> List[dict]:
         logger.info(f"🔄 DDG failed. Trying Google Fallback for: {query}")
         try:
             from googlesearch import search
-            gs_results = await asyncio.to_thread(lambda: list(search(f"{query} pdf download", num_results=10, sleep_interval=1)))
+            # Force 'filetype:pdf' and look for direct links
+            gs_query = f"{query} filetype:pdf"
+            gs_results = await asyncio.to_thread(lambda: list(search(gs_query, num_results=12, sleep_interval=1)))
             for link in gs_results:
                 if len(results) >= limit: break
-                title = link.split("/")[-1][:60] or "Resource"
-                results.append({"title": title, "url": link})
+                if link.lower().startswith("http"):
+                    title = link.split("/")[-1].split(".pdf")[0].replace("-", " ").replace("_", " ")[:60] or "Direct Resource"
+                    results.append({"title": title, "url": link})
         except Exception as ge:
             logger.error(f"Google Fallback failed: {ge}")
 
@@ -247,38 +281,100 @@ async def search_papers(query: str, limit: int = 6) -> List[dict]:
 
     return results
 
-async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Secure and verified PDF delivery with signature checking."""
+async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.DEFAULT_TYPE, depth: int = 0):
+    """Ultra-Reliable PDF delivery with deep link hunting (Up to 2 levels)."""
+    if depth > 2: return False # Deep enough to handle most "Click -> Button -> PDF" sites
+    
     try:
         session = await get_session()
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"}
-        async with session.get(url, timeout=20, headers=headers) as response:
+        # Full browser-like headers
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "Referer": url if depth > 0 else "https://www.google.com/",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/pdf,*/*;q=0.8"
+        }
+        
+        async with session.get(url, timeout=40, headers=headers, allow_redirects=True) as response:
             if response.status == 200:
-                # 1. Verify it's actually a PDF by checking headers
                 ctype = response.headers.get("Content-Type", "").lower()
-                content = await response.read()
                 
-                # 2. Check for PDF Magic Bytes (%PDF-)
-                is_pdf = content.startswith(b"%PDF-")
+                # Check for PDF magic bytes in the first few bytes (streaming read)
+                content_preview = await response.content.read(1024)
+                is_pdf = content_preview.startswith(b"%PDF-") or "pdf" in ctype
                 
+                # 1. Handling Direct PDF
                 if is_pdf:
-                    if len(content) < 48 * 1024 * 1024: # Under 48MB
-                        file_name = url.split("/")[-1].split("?")[0] or "exam_paper.pdf"
-                        if not file_name.lower().endswith(".pdf"): file_name += ".pdf"
+                    # Read the rest of the content
+                    full_content = content_preview + (await response.content.read())
+                    if len(full_content) < 48 * 1024 * 1024:
+                        cd = response.headers.get("Content-Disposition", "")
+                        fname = "exam_paper.pdf"
+                        if 'filename=' in cd:
+                            fname = cd.split('filename=')[1].strip('"').strip("'")
+                        else:
+                            # Heuristic: extract from URL
+                            parts = url.split("/")[-1].split("?")[0]
+                            if parts.lower().endswith(".pdf"): fname = parts
+                            else: fname = f"{parts}.pdf" if parts else "paper.pdf"
                         
                         msg = update.callback_query.message if update.callback_query else update.message
                         await msg.reply_document(
-                            document=io.BytesIO(content), 
-                            filename=file_name, 
-                            caption=f"✅ **Verified PDF Document**\n🔗 *Source: {url}*"
+                            document=io.BytesIO(full_content),
+                            filename=fname,
+                            caption=f"✅ **Sent Successfully!**\n🔗 *Fast Direct Download*"
                         )
                         return True
-                    else:
-                        logger.warning(f"File too large: {len(content)}")
-                else:
-                    logger.warning(f"Not a valid PDF at {url}. Headers: {ctype}")
+                    else: return "large"
+
+                # 2. Page Parsing & Landing Page Handling
+                if "html" in ctype:
+                    # Read HTML (don't miss anything)
+                    html = content_preview + (await response.content.read())
+                    soup = BeautifulSoup(html, 'html.parser')
+                    candidates = []
+                    
+                    # Look for hidden links and "Download" buttons
+                    for tag in soup.find_all(['a', 'iframe', 'button', 'embed', 'object']):
+                        link = tag.get('href') or tag.get('src') or tag.get('data-url') or tag.get('data-link')
+                        if not link or link.startswith('#') or link.startswith('javascript:'): continue
+                        
+                        full_link = urllib.parse.urljoin(url, link)
+                        text = tag.get_text().strip().lower()
+                        
+                        score = 0
+                        # Boost score based on URL and text indicators
+                        if full_link.lower().endswith(".pdf"): score += 15
+                        if "pdf" in full_link.lower(): score += 5
+                        if "download" in full_link.lower(): score += 5
+                        if "paper" in full_link.lower(): score += 3
+                        # Text triggers
+                        if "download" in text and "pdf" in text: score += 10
+                        if "click" in text and "here" in text: score += 2
+                        if "direct" in text: score += 5
+                        if "official" in text: score += 3
+
+                        # Filter out common garbage
+                        if score > 0 and not any(x in full_link.lower() for x in ["social", "login", "signup", "contact", "about"]):
+                            candidates.append((score, full_link))
+
+                    # Deduplicate and sort
+                    seen = set()
+                    unique_candidates = []
+                    for s, l in candidates:
+                        if l not in seen:
+                            unique_candidates.append((s, l))
+                            seen.add(l)
+                    
+                    unique_candidates.sort(key=lambda x: x[0], reverse=True)
+                    
+                    # Try top 6 candidates (higher depth allows more exploration)
+                    for _, cand in unique_candidates[:7]:
+                        logger.info(f"Depth {depth} -> Hunting PDF at: {cand}")
+                        if await download_and_send_pdf(cand, update, context, depth + 1):
+                            return True
     except Exception as e:
-        logger.error(f"Downloader Error: {e}")
+        logger.error(f"Reliability Error at {url}: {e}")
     return False
 
 async def year_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -382,9 +478,19 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         wait_msg = await query.message.reply_text(f"⚡ **Checking link...**")
         success = await download_and_send_pdf(url, update, context)
         await wait_msg.delete()
-        if not success:
+        
+        if success == "large":
             await query.message.reply_text(
-                f"⚠️ **Note:** Direct PDF delivery is not possible for this link (it might be a website or require manual download).\n\n"
+                f"📂 **File is too large!**\n\n"
+                f"The PDF is larger than 50MB, which is the limit for Telegram bots. "
+                f"Please download it manually using the link below:\n\n"
+                f"🔗 **[Download Large Paper]({url})**",
+                parse_mode="Markdown"
+            )
+        elif not success:
+            await query.message.reply_text(
+                f"⚠️ **Note:** Direct PDF delivery failed for this link.\n\n"
+                f"This usually happens when the website has strict bot protection or requires manual verification.\n\n"
                 f"🔗 **[Click here to open the paper in browser]({url})**",
                 parse_mode="Markdown",
                 disable_web_page_preview=False
