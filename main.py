@@ -212,44 +212,50 @@ async def search_papers(query: str, limit: int = 6) -> List[dict]:
             results.append({"title": (title or query)[:80], "url": url})
             seen_urls.add(url)
 
-    # ─── ENGINE 0: SearXNG Public Instances (JSON API - cloud-safe, no blocks) ───
-    # SearXNG is open-source, public instances return JSON, never block cloud IPs
+    # ─── ENGINE 0: SearXNG (More Instances + Improved Retry) ───
     searxng_instances = [
         "https://searx.be",
-        "https://search.mdosch.de",
         "https://searxng.world",
+        "https://search.mdosch.de",
         "https://searx.tiekoetter.com",
         "https://opnxng.com",
+        "https://search.ononoki.org",
+        "https://searx.work",
+        "https://searx.web-view.net",
     ]
     logger.info(f"🔎 [Engine 0] SearXNG: {query}")
     try:
         session = await get_session()
+        # Search for exact PDF terms
+        sq = f"{query} filetype:pdf"
         for instance in searxng_instances:
             if results: break
             try:
-                params = urllib.parse.urlencode({
-                    "q": f"{query} pdf",
-                    "format": "json",
-                    "categories": "general",
-                    "language": "en"
-                })
-                searxng_url = f"{instance}/search?{params}"
-                headers_sx = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/122.0",
-                    "Accept": "application/json",
-                }
-                async with session.get(searxng_url, headers=headers_sx, timeout=8) as resp:
+                params = urllib.parse.urlencode({"q": sq, "format": "json"})
+                async with session.get(f"{instance}/search?{params}", timeout=10) as resp:
                     if resp.status == 200:
                         data = await resp.json(content_type=None)
-                        for item in data.get("results", [])[:12]:
+                        for item in data.get("results", [])[:10]:
                             add_result(item.get("title", query), item.get("url", ""))
-                        if results:
-                            logger.info(f"[Engine 0] SearXNG ({instance}) found {len(results)} results")
-                            break
-            except Exception as sx_e:
-                logger.warning(f"[Engine 0] SearXNG {instance} failed: {sx_e}")
+            except: continue
     except Exception as e:
-        logger.error(f"[Engine 0] SearXNG overall failed: {e}")
+        logger.error(f"SearXNG overall error: {e}")
+
+    # ─── ENGINE 0.5: DuckDuckGo LITE (Scraping-safe on Cloud) ───
+    if not results:
+        logger.info(f"🔎 [Engine 0.5] DDG Lite: {query}")
+        try:
+            session = await get_session()
+            ddg_lite_url = f"https://lite.duckduckgo.com/lite/?q={urllib.parse.quote(query + ' pdf download')}"
+            headers_lite = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/122.0"}
+            async with session.get(ddg_lite_url, headers=headers_lite, timeout=10) as resp:
+                if resp.status == 200:
+                    l_soup = BeautifulSoup(await resp.text(), 'html.parser')
+                    for a in l_soup.select('a.result-link'):
+                        add_result(a.get_text(strip=True), a.get('href', ''))
+            logger.info(f"[Engine 0.5] DDG Lite found {len(results)} results")
+        except Exception as e:
+            logger.error(f"DDG Lite error: {e}")
 
     # ─── ENGINE 1: duckduckgo-search library (cloud-safe internal API) ───
     if not results:
