@@ -199,9 +199,8 @@ async def get_direct_pdf_link(session, title: str, url: str) -> dict:
 
 async def search_papers(query: str, limit: int = 6) -> List[dict]:
     """
-    Robust multi-engine search. Uses duckduckgo-search library as primary
-    (uses DDG's internal API, NOT scraping — works on all cloud IPs).
-    Multiple fallbacks ensure results are always found.
+    Robust multi-engine search. Primary: SearXNG public instances (JSON API,
+    never blocks cloud IPs). Fallbacks: DDGS library, Bing, Google lib, trusted sites.
     """
     results = []
     seen_urls = set()
@@ -211,21 +210,60 @@ async def search_papers(query: str, limit: int = 6) -> List[dict]:
             results.append({"title": (title or query)[:80], "url": url})
             seen_urls.add(url)
 
-    # ─── ENGINE 1: duckduckgo-search library (PRIMARY - cloud-safe) ───
-    logger.info(f"🔎 [Engine 1] DDGS library: {query}")
+    # ─── ENGINE 0: SearXNG Public Instances (JSON API - cloud-safe, no blocks) ───
+    # SearXNG is open-source, public instances return JSON, never block cloud IPs
+    searxng_instances = [
+        "https://searx.be",
+        "https://search.mdosch.de",
+        "https://searxng.world",
+        "https://searx.tiekoetter.com",
+        "https://opnxng.com",
+    ]
+    logger.info(f"🔎 [Engine 0] SearXNG: {query}")
     try:
-        from duckduckgo_search import DDGS
-        search_q = f"{query} filetype:pdf"
-        ddgs_results = await asyncio.to_thread(
-            lambda: list(DDGS().text(search_q, max_results=12, timelimit=None))
-        )
-        for r in ddgs_results:
-            add_result(r.get("title", query), r.get("href", ""))
-        logger.info(f"[Engine 1] DDGS found {len(results)} results")
+        session = await get_session()
+        for instance in searxng_instances:
+            if results: break
+            try:
+                params = urllib.parse.urlencode({
+                    "q": f"{query} pdf",
+                    "format": "json",
+                    "categories": "general",
+                    "language": "en"
+                })
+                searxng_url = f"{instance}/search?{params}"
+                headers_sx = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/122.0",
+                    "Accept": "application/json",
+                }
+                async with session.get(searxng_url, headers=headers_sx, timeout=8) as resp:
+                    if resp.status == 200:
+                        data = await resp.json(content_type=None)
+                        for item in data.get("results", [])[:12]:
+                            add_result(item.get("title", query), item.get("url", ""))
+                        if results:
+                            logger.info(f"[Engine 0] SearXNG ({instance}) found {len(results)} results")
+                            break
+            except Exception as sx_e:
+                logger.warning(f"[Engine 0] SearXNG {instance} failed: {sx_e}")
     except Exception as e:
-        logger.error(f"[Engine 1] DDGS failed: {e}")
+        logger.error(f"[Engine 0] SearXNG overall failed: {e}")
 
-    # ─── ENGINE 2: DDGS without filetype filter (if filetype:pdf gave 0) ───
+    # ─── ENGINE 1: duckduckgo-search library (cloud-safe internal API) ───
+    if not results:
+        logger.info(f"🔎 [Engine 1] DDGS library: {query}")
+        try:
+            from duckduckgo_search import DDGS
+            ddgs_results = await asyncio.to_thread(
+                lambda: list(DDGS().text(f"{query} filetype:pdf", max_results=12))
+            )
+            for r in ddgs_results:
+                add_result(r.get("title", query), r.get("href", ""))
+            logger.info(f"[Engine 1] DDGS found {len(results)} results")
+        except Exception as e:
+            logger.error(f"[Engine 1] DDGS failed: {e}")
+
+    # ─── ENGINE 2: DDGS without filetype filter ───
     if not results:
         logger.info(f"🔎 [Engine 2] DDGS (no filetype): {query}")
         try:
@@ -276,7 +314,7 @@ async def search_papers(query: str, limit: int = 6) -> List[dict]:
         except Exception as e:
             logger.error(f"[Engine 4] Google failed: {e}")
 
-    # ─── ENGINE 5: Trusted Indian Exam Sites (guaranteed last resort) ───
+    # ─── ENGINE 5: Trusted Indian Exam Sites (last resort) ───
     if not results:
         logger.info(f"🔎 [Engine 5] Trusted Indian sites: {query}")
         q_enc = urllib.parse.quote(query)
@@ -566,6 +604,53 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(help_msg, parse_mode="Markdown")
 
+async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Tests all search engines and reports results directly in chat."""
+    msg = await update.message.reply_text("🔬 **Running search diagnostics...**", parse_mode="Markdown")
+    report = ["🔬 **Search Engine Diagnostic Report**\n"]
+    test_query = "JEE Mains 2023 question paper"
+    report.append(f"📋 Test query: `{test_query}`\n")
+
+    # Test SearXNG
+    try:
+        session = await get_session()
+        params = urllib.parse.urlencode({"q": test_query + " pdf", "format": "json", "categories": "general"})
+        async with session.get(f"https://searx.be/search?{params}", headers={"Accept": "application/json"}, timeout=8) as resp:
+            data = await resp.json(content_type=None)
+            count = len(data.get("results", []))
+            report.append(f"{'✅' if count > 0 else '❌'} SearXNG (searx.be): {count} results")
+    except Exception as e:
+        report.append(f"❌ SearXNG: {str(e)[:60]}")
+
+    # Test DDGS library
+    try:
+        from duckduckgo_search import DDGS
+        res = await asyncio.to_thread(lambda: list(DDGS().text(test_query, max_results=5)))
+        report.append(f"{'✅' if res else '❌'} DDGS library: {len(res)} results")
+    except Exception as e:
+        report.append(f"❌ DDGS: {str(e)[:60]}")
+
+    # Test Bing
+    try:
+        session = await get_session()
+        async with session.get(f"https://www.bing.com/search?q={urllib.parse.quote(test_query)}", headers={"User-Agent": "Mozilla/5.0"}, timeout=8) as resp:
+            soup = BeautifulSoup(await resp.text(), 'html.parser')
+            links = soup.select('h2 a')
+            report.append(f"{'✅' if links else '❌'} Bing: {len(links)} links found (status {resp.status})")
+    except Exception as e:
+        report.append(f"❌ Bing: {str(e)[:60]}")
+
+    # Test Google lib
+    try:
+        from googlesearch import search as gsearch
+        res = await asyncio.to_thread(lambda: list(gsearch(test_query, num_results=3, sleep_interval=0)))
+        report.append(f"{'✅' if res else '❌'} Google lib: {len(res)} results")
+    except Exception as e:
+        report.append(f"❌ Google lib: {str(e)[:60]}")
+
+    full_report = "\n".join(report)
+    await msg.edit_text(full_report, parse_mode="Markdown")
+
 def main():
     if not BOT_TOKEN:
         logger.error("❌ ERROR: TELEGRAM_BOT_TOKEN is missing!")
@@ -616,6 +701,7 @@ def main():
     # Base commands
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("debug", debug_command))
     
     # Callback Handlers
     application.add_handler(CallbackQueryHandler(start, pattern="^back_cats$"))
