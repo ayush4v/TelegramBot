@@ -82,8 +82,10 @@ YEARS = ["2024", "2023", "2022", "2021", "2020", "2019", "2018", "Older"]
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Shows main categories."""
+    # VERSION IDENTIFICATION
+    version = "v6.2 Nuclear Ultra"
     text = (
-        "👋 **Welcome to the Professional Exam Assistant Bot v5.0 Ultra**\n\n"
+        f"👋 **Welcome to the Professional Exam Assistant Bot {version}**\n\n"
         "I can help you find and download Previous Year Question Papers (PYQs) for almost all major Indian exams.\n\n"
         "Please select an **Exam Category** below to get started:"
     )
@@ -211,21 +213,19 @@ async def search_papers(query_text: str, limit: int = 6) -> List[dict]:
             results.append({"title": (title or query_text)[:80], "url": url})
             seen_urls.add(url)
 
-    # ─── LEVEL 0: STATIC DATABASE (Instant Reliable Links for Top Exams) ───
+    # ─── LEVEL 0: STATIC DATABASE (Guaranteed Links) ───
     static_db = {
         "jee main": [
-            {"title": "JEE Main 2024 Paper (Direct Link)", "url": "https://schools.aglasem.com/tag/jee-main-2024/"},
-            {"title": "JEE Main 2023 Previous Year Paper", "url": "https://schools.aglasem.com/tag/jee-main-2023/"},
-            {"title": "JEE Main Question Paper Library", "url": "https://schools.aglasem.com/tag/jee-main-question-papers/"}
+            {"title": "JEE Main Official Archive (Direct)", "url": "https://schools.aglasem.com/tag/jee-main-question-papers/"},
+            {"title": "JEE Main 2024 Paper", "url": "https://schools.aglasem.com/tag/jee-main-2024/"},
+            {"title": "JEE Main 2023 Paper", "url": "https://schools.aglasem.com/tag/jee-main-2023/"}
         ],
         "neet": [
-            {"title": "NEET UG 2024 Paper & Analysis", "url": "https://schools.aglasem.com/tag/neet-2024/"},
-            {"title": "NEET UG 2023 Question Paper", "url": "https://schools.aglasem.com/tag/neet-2023/"},
-            {"title": "NEET Question Paper Archive", "url": "https://schools.aglasem.com/tag/neet-question-papers/"}
+            {"title": "NEET UG Official Archive (Direct)", "url": "https://schools.aglasem.com/tag/neet-question-papers/"},
+            {"title": "NEET UG 2024 Paper", "url": "https://schools.aglasem.com/tag/neet-2024/"}
         ],
-        "upsc": [{"title": "UPSC CSE Prelims Paper Hub", "url": "https://schools.aglasem.com/tag/upsc-question-papers/"}],
-        "cbse class 10": [{"title": "CBSE Class 10 Paper Collection", "url": "https://schools.aglasem.com/tag/cbse-class-10-question-papers/"}],
-        "cbse class 12": [{"title": "CBSE Class 12 Paper Collection", "url": "https://schools.aglasem.com/tag/cbse-class-12-question-papers/"}]
+        "upsc": [{"title": "UPSC Exam Library", "url": "https://schools.aglasem.com/tag/upsc-question-papers/"}],
+        "cbse": [{"title": "CBSE Board Paper Hub", "url": "https://schools.aglasem.com/tag/cbse-question-papers/"}]
     }
     
     q_low = query_text.lower()
@@ -233,9 +233,9 @@ async def search_papers(query_text: str, limit: int = 6) -> List[dict]:
         if kw in q_low:
             for l in links: add_result(l['title'], l['url'])
 
-    # ─── LEVEL 1: Aggressive Multi-Tag Scraper ───
-    q_short = q_low.replace("previous year question paper", "").replace("paper", "").strip()
-    queries = [q_short, f"{q_short} pyq", query_text]
+    # ─── LEVEL 1: Super-Short Scraper (Bypasses all hurdles) ───
+    q_simple = q_low.replace("previous year question paper", "").replace("paper", "").strip()
+    queries = [q_simple, f"{q_simple} pyq", query_text[:30]]
     
     async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as fresh_sess:
         for q in queries:
