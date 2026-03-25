@@ -198,87 +198,170 @@ async def get_direct_pdf_link(session, title: str, url: str) -> dict:
     return None
 
 async def search_papers(query: str, limit: int = 6) -> List[dict]:
-    """Search papers with fallback to raw search results if resolution fails."""
+    """Robust multi-engine search with multiple fallbacks to avoid bot blocking."""
     results = []
-    # Clean query to avoid duplicate keywords
-    # Prioritize filetype:pdf which is highly effective on Google & others
-    search_query = f"{query} filetype:pdf OR ext:pdf OR pdf download"
-    search_url = f"https://duckduckgo.com/html/?q={urllib.parse.quote(search_query)}"
-    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/121.0.0.0 Safari/537.36"}
-    
+    seen_urls = set()
+    session = await get_session()
+
+    def add_result(title, url):
+        """Helper to add unique results."""
+        if url and url not in seen_urls and len(results) < limit:
+            results.append({"title": title[:80], "url": url})
+            seen_urls.add(url)
+
+    # ─── ENGINE 1: DuckDuckGo Lite (most reliable, no JS needed) ───
+    logger.info(f"🔎 [Engine 1] DDG Lite search: {query}")
     try:
-        session = await get_session()
-        async with session.get(search_url, headers=headers, timeout=6) as response:
-            if response.status == 200:
-                html = await response.text()
+        ddg_lite_url = f"https://lite.duckduckgo.com/lite/?q={urllib.parse.quote(query + ' pdf question paper')}"
+        headers_ddg = {
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
+        async with session.get(ddg_lite_url, headers=headers_ddg, timeout=10) as resp:
+            if resp.status == 200:
+                html = await resp.text()
                 soup = BeautifulSoup(html, 'html.parser')
-                
-                raw_candidates = []
-                # Try multiple selectors for DDG HTML results
-                search_results = soup.find_all('a', class_='result__a') or soup.select('.result__title a')
-                for a in search_results[:10]:
+                for a in soup.select('a.result-link, a[href*="http"]'):
                     href = a.get('href', '')
-                    if "uddg=" in href:
-                        href = urllib.parse.parse_qs(urllib.parse.urlparse(href).query).get('uddg', [href])[0]
-                    if href.startswith("//"): href = "https:" + href
-                    title = a.get_text().strip().replace("PDF", "").strip()[:60]
-                    if href and title:
-                        raw_candidates.append({"title": title, "url": href})
-
-                if raw_candidates:
-                    tasks = [get_direct_pdf_link(session, res['title'], res['url']) for res in raw_candidates]
-                    resolved_results = await asyncio.gather(*tasks)
-                    
-                    seen_urls = set()
-                    for res in resolved_results:
-                        if res and res['url'] not in seen_urls:
-                            results.append(res)
-                            seen_urls.add(res['url'])
-                    
-                    if len(results) < limit:
-                        for raw in raw_candidates:
-                            if raw['url'] not in seen_urls and len(results) < limit:
-                                results.append(raw)
-                                seen_urls.add(raw['url'])
-            else:
-                logger.error(f"DDG HTTP Error: {response.status}")
+                    if not href or href.startswith('/') or 'duckduckgo.com' in href:
+                        continue
+                    title = a.get_text(strip=True) or query
+                    add_result(title, href)
+                logger.info(f"[Engine 1] DDG Lite found {len(results)} results")
     except Exception as e:
-        import traceback
-        logger.error(f"Search Exception:\n{traceback.format_exc()}")
+        logger.error(f"[Engine 1] DDG Lite failed: {e}")
 
-    # --- FALLBACK 1: GOOGLE (googlesearch-python) ---
+    # ─── ENGINE 2: DuckDuckGo HTML scraping (fallback with rotated UA) ───
     if not results:
-        logger.info(f"🔄 DDG failed. Trying Google Fallback for: {query}")
+        logger.info(f"🔎 [Engine 2] DDG HTML search: {query}")
         try:
-            from googlesearch import search
-            # Force 'filetype:pdf' and look for direct links
-            gs_query = f"{query} filetype:pdf"
-            gs_results = await asyncio.to_thread(lambda: list(search(gs_query, num_results=12, sleep_interval=1)))
-            for link in gs_results:
-                if len(results) >= limit: break
-                if link.lower().startswith("http"):
-                    title = link.split("/")[-1].split(".pdf")[0].replace("-", " ").replace("_", " ")[:60] or "Direct Resource"
-                    results.append({"title": title, "url": link})
-        except Exception as ge:
-            logger.error(f"Google Fallback failed: {ge}")
+            import random
+            user_agents = [
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+                "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:122.0) Gecko/20100101 Firefox/122.0",
+            ]
+            search_q = f"{query} filetype:pdf OR question paper pdf"
+            ddg_url = f"https://duckduckgo.com/html/?q={urllib.parse.quote(search_q)}"
+            h2 = {
+                "User-Agent": random.choice(user_agents),
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.5",
+                "Referer": "https://duckduckgo.com/",
+                "DNT": "1",
+            }
+            async with session.get(ddg_url, headers=h2, timeout=10) as resp:
+                if resp.status == 200:
+                    html = await resp.text()
+                    soup = BeautifulSoup(html, 'html.parser')
+                    # Try all known DDG HTML selectors
+                    links = (soup.find_all('a', class_='result__a') or
+                             soup.select('.result__title a') or
+                             soup.select('a[href*="uddg="]'))
+                    for a in links[:12]:
+                        href = a.get('href', '')
+                        if 'uddg=' in href:
+                            href = urllib.parse.parse_qs(urllib.parse.urlparse(href).query).get('uddg', [href])[0]
+                        if href.startswith('//'): href = 'https:' + href
+                        if href.startswith('http') and 'duckduckgo.com' not in href:
+                            title = a.get_text(strip=True) or query
+                            add_result(title, href)
+                    logger.info(f"[Engine 2] DDG HTML found {len(results)} results")
+        except Exception as e:
+            logger.error(f"[Engine 2] DDG HTML failed: {e}")
 
-    # --- FALLBACK 2: BING (Simple Scraping) ---
+    # ─── ENGINE 3: Bing Search Scraping ───
     if not results:
-        logger.info(f"🔄 Google failed. Trying Bing Fallback for: {query}")
+        logger.info(f"🔎 [Engine 3] Bing search: {query}")
         try:
-            bing_url = f"https://www.bing.com/search?q={urllib.parse.quote(query + ' pdf download')}"
-            async with session.get(bing_url, headers=headers, timeout=6) as b_res:
-                if b_res.status == 200:
-                    b_html = await b_res.text()
+            bing_url = f"https://www.bing.com/search?q={urllib.parse.quote(query + ' filetype:pdf question paper')}&count=15"
+            h3 = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.6167.85 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml",
+                "Accept-Language": "en-IN,en;q=0.9",
+            }
+            async with session.get(bing_url, headers=h3, timeout=10) as resp:
+                if resp.status == 200:
+                    b_html = await resp.text()
                     b_soup = BeautifulSoup(b_html, 'html.parser')
-                    for b_a in b_soup.select('h2 a')[:8]:
-                        b_url = b_a.get('href')
-                        b_title = b_a.get_text()[:60]
-                        if b_url and b_url.startswith("http"):
-                            results.append({"title": b_title, "url": b_url})
-        except Exception as be:
-            logger.error(f"Bing Fallback failed: {be}")
+                    for b_a in b_soup.select('h2 a, .b_algo h2 a')[:10]:
+                        b_url = b_a.get('href', '')
+                        b_title = b_a.get_text(strip=True)
+                        if b_url and b_url.startswith('http'):
+                            add_result(b_title, b_url)
+                    logger.info(f"[Engine 3] Bing found {len(results)} results")
+        except Exception as e:
+            logger.error(f"[Engine 3] Bing failed: {e}")
 
+    # ─── ENGINE 4: Google (googlesearch-python library) ───
+    if not results:
+        logger.info(f"🔎 [Engine 4] Google lib search: {query}")
+        try:
+            from googlesearch import search as gsearch
+            gs_results = await asyncio.to_thread(
+                lambda: list(gsearch(f"{query} filetype:pdf", num_results=10, sleep_interval=1, advanced=False))
+            )
+            for link in gs_results:
+                if isinstance(link, str) and link.startswith('http'):
+                    title = link.split('/')[-1].split('.pdf')[0].replace('-', ' ').replace('_', ' ') or query[:50]
+                    add_result(title, link)
+                elif hasattr(link, 'url'):
+                    add_result(getattr(link, 'title', query[:50]), link.url)
+            logger.info(f"[Engine 4] Google found {len(results)} results")
+        except Exception as e:
+            logger.error(f"[Engine 4] Google failed: {e}")
+
+    # ─── ENGINE 5: Hardcoded Trusted Indian PDF Sites ───
+    # As last resort, generate direct search URLs from known exam sites
+    if not results:
+        logger.info(f"🔎 [Engine 5] Trusted sites fallback: {query}")
+        q_encoded = urllib.parse.quote(query)
+        trusted_search_urls = [
+            ("AglaSem", f"https://aglasem.com/?s={q_encoded}"),
+            ("Examfare", f"https://www.examfare.com/?s={q_encoded}"),
+            ("SarkariExam", f"https://sarkariexam.com/?s={q_encoded}"),
+            ("CBSE Guide", f"https://www.cbseguess.com/papers/search/?search={q_encoded}"),
+            ("myCBSEguide", f"https://mycbseguide.com/search/?q={q_encoded}"),
+        ]
+        for site_name, site_url in trusted_search_urls:
+            if len(results) >= limit: break
+            try:
+                h5 = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/122.0"}
+                async with session.get(site_url, headers=h5, timeout=8) as resp:
+                    if resp.status == 200:
+                        s_html = await resp.text()
+                        s_soup = BeautifulSoup(s_html, 'html.parser')
+                        for a in s_soup.find_all('a', href=True)[:40]:
+                            href = urllib.parse.urljoin(site_url, a['href'])
+                            txt = a.get_text(strip=True)
+                            score = 0
+                            if href.lower().endswith('.pdf'): score += 10
+                            if 'pdf' in href.lower(): score += 5
+                            if any(w in txt.lower() for w in ['paper', 'question', 'exam', 'pdf']): score += 3
+                            if score >= 3:
+                                add_result(f"{site_name}: {txt}" if txt else site_name, href)
+            except Exception as e:
+                logger.warning(f"[Engine 5] {site_name} failed: {e}")
+        logger.info(f"[Engine 5] Trusted sites found {len(results)} results")
+
+    # ─── PDF Link Resolution: try to upgrade landing pages to direct PDFs ───
+    if results:
+        logger.info(f"🔗 Resolving {len(results)} result URLs to direct PDFs...")
+        tasks = [get_direct_pdf_link(session, r['title'], r['url']) for r in results]
+        resolved = await asyncio.gather(*tasks, return_exceptions=True)
+        final = []
+        final_seen = set()
+        for orig, res in zip(results, resolved):
+            if isinstance(res, dict) and res.get('url') and res['url'] not in final_seen:
+                final.append(res)
+                final_seen.add(res['url'])
+            elif orig['url'] not in final_seen:
+                final.append(orig)
+                final_seen.add(orig['url'])
+        results = final[:limit]
+
+    logger.info(f"✅ Total search results returned: {len(results)}")
     return results
 
 async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.DEFAULT_TYPE, depth: int = 0):
@@ -391,7 +474,12 @@ async def year_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     parts = query.data.split("_")
     cat_name, exam_name, year = parts[1], parts[2], parts[3]
     
-    final_query = f"{exam_name} {year}"
+    # Use the full descriptive query from EXAM_CATEGORIES for better search results
+    category_exams = EXAM_CATEGORIES.get(cat_name, {})
+    base_query = category_exams.get(exam_name, f"{exam_name} Previous Year Question Paper")
+    year_str = "" if year == "Older" else year
+    final_query = f"{base_query} {year_str}".strip()
+
     await query.edit_message_text(f"⚡ **Searching {exam_name} ({year})...**", parse_mode="Markdown")
     
     # Show typing indicator for better UX
