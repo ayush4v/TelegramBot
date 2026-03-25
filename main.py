@@ -212,58 +212,56 @@ async def search_papers(query_text: str, limit: int = 6) -> List[dict]:
             seen_urls.add(url)
 
     # Broaden Query for better results
-    queries = [query_text, query_text.replace(" question paper", "") + " pdf"]
+    queries = [
+        query_text,
+        f"{query_text.split(' ')[0]} {query_text.split(' ')[-1]} pyq pdf",
+        query_text.replace("Previous Year Question Paper", "paper")
+    ]
     
-    # NEW: FRESH SESSION PER SEARCH CALL (Avoids IP-level bot tracking)
-    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as fresh_sess:
+    async with aiohttp.ClientSession() as fresh_sess:
         for q in queries:
             if results: break
             
-            # ─── ENGINE 0: Massive Parallel SearXNG ───
-            instances = [
-                "https://searx.be", "https://searxng.world", "https://search.mdosch.de",
-                "https://searx.tiekoetter.com", "https://opnxng.com", "https://search.ononoki.org",
-                "https://searx.work", "https://search.inet-it.de", "https://searx.prvcy.eu",
-                "https://searx.privacy.ovh", "https://searx.garudalinux.org", "https://searx.oakst.xyz"
-            ]
+            # ─── ENGINE 0: Direct Portal Scraper (Guaranteed Results) ───
+            # These sites have high-quality papers for all years
+            tags = [q.lower().replace(" ", "-"), q.lower().split(" ")[0] + "-question-paper"]
+            portal_tasks = []
+            for t in tags[:2]:
+                portal_tasks.append(f"https://schools.aglasem.com/tag/{t}/")
+                portal_tasks.append(f"https://www.examfare.com/tag/{t}/")
             
-            async def fetch_one(instance, sq):
+            async def scrape_portal(p_url):
                 try:
-                    p = urllib.parse.urlencode({"q": sq, "format": "json"})
-                    async with fresh_sess.get(f"{instance}/search?{p}", timeout=7) as r:
+                    async with fresh_sess.get(p_url, timeout=10) as r:
                         if r.status == 200:
-                            d = await r.json(content_type=None)
-                            return d.get("results", [])
+                            s = BeautifulSoup(await r.text(), 'html.parser')
+                            return [(a.get_text(strip=True), a.get('href')) for a in s.select('h2 a, .entry-title a')[:10]]
                 except: return []
+            
+            p_batch = await asyncio.gather(*[scrape_portal(u) for u in portal_tasks], return_exceptions=True)
+            for pb in p_batch:
+                if isinstance(pb, list):
+                    for tit, lnk in pb: add_result(tit, lnk)
 
-            tasks = [fetch_one(inst, q) for inst in instances]
-            batch = await asyncio.gather(*tasks, return_exceptions=True)
-            for b in batch:
-                if isinstance(b, list):
-                    for item in b: add_result(item.get('title', q), item.get('url', ''))
-
-            # ─── ENGINE 1: Direct Site Search (Guaranteed Indian Fallback) ───
+            # ─── ENGINE 1: Multi-Parallel SearXNG Flooding ───
             if not results:
-                q_enc = urllib.parse.quote(q)
-                sites = [
-                    f"https://schools.aglasem.com/?s={q_enc}",
-                    f"https://www.examfare.com/?s={q_enc}",
-                    f"https://www.careers360.com/search?q={q_enc}"
+                instances = [
+                    "https://searx.be", "https://searxng.world", "https://search.mdosch.de",
+                    "https://searx.prvcy.eu", "https://searx.tiekoetter.com", "https://opnxng.com"
                 ]
-                async def fetch_site(url_site):
+                async def fetch_sx(inst, sq):
                     try:
-                        h = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0"}
-                        async with fresh_sess.get(url_site, headers=h, timeout=10) as rr:
+                        p = urllib.parse.urlencode({"q": sq, "format": "json"})
+                        async with fresh_sess.get(f"{inst}/search?{p}", timeout=6) as rr:
                             if rr.status == 200:
-                                s = BeautifulSoup(await rr.text(), 'html.parser')
-                                return [(a.get_text(strip=True), a.get('href')) for a in s.select('h2 a, .entry-title a, .search-result a')[:5]]
+                                d = await rr.json()
+                                return d.get('results', [])
                     except: return []
                 
-                s_tasks = [fetch_site(su) for su in sites]
-                s_batch = await asyncio.gather(*s_tasks, return_exceptions=True)
-                for sb in s_batch:
-                    if isinstance(sb, list):
-                        for tit, lnk in sb: add_result(tit, lnk)
+                sx_batch = await asyncio.gather(*[fetch_sx(i, q) for i in instances], return_exceptions=True)
+                for sxb in sx_batch:
+                    if isinstance(sxb, list):
+                        for item in sxb: add_result(item.get('title', q), item.get('url', ''))
 
     if results:
         # Pre-resolve and clean up
