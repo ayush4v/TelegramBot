@@ -150,14 +150,16 @@ async def get_session():
     return session_instance
 
 async def get_direct_pdf_link(session, title: str, url: str) -> dict:
-    """Try to find a direct PDF link with a 5s timeout."""
+    """Try to find a direct PDF link with a 12s timeout."""
     if url.lower().endswith(".pdf"): return {"title": title, "url": url}
     try:
-        # Increased timeout to 5 seconds for better reliability on Indian sites
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/121.0.0.0 Safari/537.36"}
-        async with session.get(url, timeout=5.0, headers=headers) as response:
+        # Improved headers for better detection
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
+        async with session.get(url, timeout=12.0, headers=headers) as response:
             if response.status == 200:
-                # 1. If the URL itself serves a PDF (checked by content-type)
                 ctype = response.headers.get("Content-Type", "").lower()
                 if "pdf" in ctype: return {"title": title, "url": url}
 
@@ -374,23 +376,25 @@ async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.
     
     try:
         session = await get_session()
-        # Full browser-like headers
+        # High-Quality Headers (mimics a real Chrome browser on Windows)
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             "Referer": url if depth > 0 else "https://www.google.com/",
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/pdf,*/*;q=0.8"
+            "Accept-Language": "en-IN,en-US;q=0.9,en;q=0.8",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/pdf,*/*;q=0.8",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1"
         }
         
-        async with session.get(url, timeout=40, headers=headers, allow_redirects=True) as response:
+        # Extended timeout (45s) for slow educational portals
+        async with session.get(url, timeout=45, headers=headers, allow_redirects=True) as response:
             if response.status == 200:
                 ctype = response.headers.get("Content-Type", "").lower()
                 
-                # Check for PDF magic bytes in the first few bytes (streaming read)
-                content_preview = await response.content.read(1024)
+                # Check for PDF magic bytes (streaming read)
+                content_preview = await response.content.read(2048)
                 is_pdf = content_preview.startswith(b"%PDF-") or "pdf" in ctype
                 
-                # 1. Handling Direct PDF
                 if is_pdf:
                     # Read the rest of the content
                     full_content = content_preview + (await response.content.read())
