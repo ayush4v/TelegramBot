@@ -4,3 +4,4 @@ googlesearch-python
 requests
 aiohttp
 beautifulsoup4
+duckduckgo-search>=6.0
