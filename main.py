@@ -211,37 +211,41 @@ async def search_papers(query_text: str, limit: int = 6) -> List[dict]:
             results.append({"title": (title or query_text)[:80], "url": url})
             seen_urls.add(url)
 
-    # Broaden Query for better results
+    # Broaden Query & Cleanup
+    q_short = query_text.lower().replace("previous year question paper", "").strip()
     queries = [
-        query_text,
-        f"{query_text.split(' ')[0]} {query_text.split(' ')[-1]} pyq pdf",
-        query_text.replace("Previous Year Question Paper", "paper")
+        f"{q_short} pyq paper",
+        f"{q_short} question paper",
+        f"{q_short} official website"
     ]
     
-    async with aiohttp.ClientSession() as fresh_sess:
+    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as fresh_sess:
         for q in queries:
             if results: break
             
-            # ─── ENGINE 0: Direct Portal Scraper (Guaranteed Results) ───
-            # These sites have high-quality papers for all years
-            tags = [q.lower().replace(" ", "-"), q.lower().split(" ")[0] + "-question-paper"]
-            portal_tasks = []
-            for t in tags[:2]:
-                portal_tasks.append(f"https://schools.aglasem.com/tag/{t}/")
-                portal_tasks.append(f"https://www.examfare.com/tag/{t}/")
+            # ─── ENGINE 0: Direct Portal Scrapers (UNBLOCKABLE) ───
+            # These are specific for Indian educational exams
+            slug = q.lower().replace(" ", "-")
+            targets = [
+                f"https://schools.aglasem.com/tag/{slug}/",
+                f"https://schools.aglasem.com/?s={urllib.parse.quote(q)}",
+                f"https://www.examfare.com/tag/{slug}/",
+                f"https://www.careers360.com/search?q={urllib.parse.quote(q)}"
+            ]
             
-            async def scrape_portal(p_url):
+            async def scrape(u):
                 try:
-                    async with fresh_sess.get(p_url, timeout=10) as r:
+                    h = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0"}
+                    async with fresh_sess.get(u, headers=h, timeout=12) as r:
                         if r.status == 200:
                             s = BeautifulSoup(await r.text(), 'html.parser')
-                            return [(a.get_text(strip=True), a.get('href')) for a in s.select('h2 a, .entry-title a')[:10]]
+                            return [(a.get_text(strip=True), a.get('href')) for a in s.select('h2 a, .entry-title a, .search-result a')[:10]]
                 except: return []
             
-            p_batch = await asyncio.gather(*[scrape_portal(u) for u in portal_tasks], return_exceptions=True)
-            for pb in p_batch:
-                if isinstance(pb, list):
-                    for tit, lnk in pb: add_result(tit, lnk)
+            batches = await asyncio.gather(*[scrape(u) for u in targets], return_exceptions=True)
+            for b in batches:
+                if isinstance(b, list):
+                    for t, l in b: add_result(f"Official: {t}", l)
 
             # ─── ENGINE 1: Multi-Parallel SearXNG Flooding ───
             if not results:
@@ -251,8 +255,8 @@ async def search_papers(query_text: str, limit: int = 6) -> List[dict]:
                 ]
                 async def fetch_sx(inst, sq):
                     try:
-                        p = urllib.parse.urlencode({"q": sq, "format": "json"})
-                        async with fresh_sess.get(f"{inst}/search?{p}", timeout=6) as rr:
+                        p = urllib.parse.urlencode({"q": f"{sq} filetype:pdf", "format": "json"})
+                        async with fresh_sess.get(f"{inst}/search?{p}", timeout=8) as rr:
                             if rr.status == 200:
                                 d = await rr.json()
                                 return d.get('results', [])
