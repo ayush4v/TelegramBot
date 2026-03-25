@@ -201,8 +201,7 @@ async def get_direct_pdf_link(session, title: str, url: str) -> dict:
 
 async def search_papers(query_text: str, limit: int = 6) -> List[dict]:
     """
-    ULTRA-RELIABLE Parallel Multi-Engine Search.
-    Uses 10+ engines concurrently to bypass all blocks and timeouts.
+    NUCLEAR PARALLEL SEARCH: Fresh session per call, 15+ parallel engines.
     """
     results = []
     seen_urls = set()
@@ -212,84 +211,68 @@ async def search_papers(query_text: str, limit: int = 6) -> List[dict]:
             results.append({"title": (title or query_text)[:80], "url": url})
             seen_urls.add(url)
 
-    # 🔄 QUERY RELAXATION: If first specific search fails, try broader one
-    queries_to_try = [
-        query_text,
-        query_text.replace(" question paper", "").replace(" paper", "") + " pdf",
-        query_text.split(" ")[0] + " " + query_text.split(" ")[-1] + " pyq pdf"
-    ]
-
-    for q in queries_to_try:
-        if results: break
-        logger.info(f"🔎 [Search] Trying: {q}")
-        
-        # ─── PARALLEL ENGINE 0: SearXNG (Multi-instance flood) ───
-        searxng_instances = [
-            "https://searx.be", "https://searxng.world", "https://search.mdosch.de",
-            "https://searx.tiekoetter.com", "https://opnxng.com", "https://search.ononoki.org",
-            "https://searx.work", "https://search.inet-it.de", "https://searx.prvcy.eu"
-        ]
-        
-        async def fetch_searxng(instance, sq):
-            try:
-                session = await get_session()
-                params = urllib.parse.urlencode({"q": sq, "format": "json"})
-                async with session.get(f"{instance}/search?{params}", timeout=8) as resp:
-                    if resp.status == 200:
-                        data = await resp.json(content_type=None)
-                        return data.get("results", [])
-            except: return []
-
-        tasks = [fetch_searxng(inst, q) for inst in searxng_instances]
-        all_searxng = await asyncio.gather(*tasks, return_exceptions=True)
-        for sub_results in all_searxng:
-            if isinstance(sub_results, list):
-                for sr in sub_results[:10]:
-                    add_result(sr.get("title", q), sr.get("url", ""))
-        
-        # ─── ENGINE 1: AglaSem Dedicated Tag Scraper (Reliable Indian Portals) ───
-        if not results:
-            tag_slug = q.lower().replace(" ", "-").replace("question-paper", "question-papers")
-            trusted_urls = [
-                f"https://schools.aglasem.com/tag/{tag_slug}/",
-                f"https://schools.aglasem.com/?s={urllib.parse.quote(q)}"
+    # Broaden Query for better results
+    queries = [query_text, query_text.replace(" question paper", "") + " pdf"]
+    
+    # NEW: FRESH SESSION PER SEARCH CALL (Avoids IP-level bot tracking)
+    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as fresh_sess:
+        for q in queries:
+            if results: break
+            
+            # ─── ENGINE 0: Massive Parallel SearXNG ───
+            instances = [
+                "https://searx.be", "https://searxng.world", "https://search.mdosch.de",
+                "https://searx.tiekoetter.com", "https://opnxng.com", "https://search.ononoki.org",
+                "https://searx.work", "https://search.inet-it.de", "https://searx.prvcy.eu",
+                "https://searx.privacy.ovh", "https://searx.garudalinux.org", "https://searx.oakst.xyz"
             ]
-            try:
-                session = await get_session()
-                for t_url in trusted_urls:
-                    async with session.get(t_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10) as resp:
-                        if resp.status == 200:
-                            s_soup = BeautifulSoup(await resp.text(), 'html.parser')
-                            for a in s_soup.select('h2 a, .entry-title a, h3 a'):
-                                add_result(a.get_text(strip=True), a.get('href', ''))
-            except: pass
+            
+            async def fetch_one(instance, sq):
+                try:
+                    p = urllib.parse.urlencode({"q": sq, "format": "json"})
+                    async with fresh_sess.get(f"{instance}/search?{p}", timeout=7) as r:
+                        if r.status == 200:
+                            d = await r.json(content_type=None)
+                            return d.get("results", [])
+                except: return []
 
-        # ─── ENGINE 2: DuckDuckGo Lite ───
-        if not results:
-            try:
-                session = await get_session()
-                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/122.0"}
-                async with session.get(f"https://lite.duckduckgo.com/lite/?q={urllib.parse.quote(q + ' pdf download')}", headers=headers, timeout=8) as resp:
-                    if resp.status == 200:
-                        l_soup = BeautifulSoup(await resp.text(), 'html.parser')
-                        for a in l_soup.select('a.result-link'):
-                            add_result(a.get_text(strip=True), a.get('href', ''))
-            except: pass
+            tasks = [fetch_one(inst, q) for inst in instances]
+            batch = await asyncio.gather(*tasks, return_exceptions=True)
+            for b in batch:
+                if isinstance(b, list):
+                    for item in b: add_result(item.get('title', q), item.get('url', ''))
 
-    # Resolve links and return
+            # ─── ENGINE 1: Direct Site Search (Guaranteed Indian Fallback) ───
+            if not results:
+                q_enc = urllib.parse.quote(q)
+                sites = [
+                    f"https://schools.aglasem.com/?s={q_enc}",
+                    f"https://www.examfare.com/?s={q_enc}",
+                    f"https://www.careers360.com/search?q={q_enc}"
+                ]
+                async def fetch_site(url_site):
+                    try:
+                        h = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0"}
+                        async with fresh_sess.get(url_site, headers=h, timeout=10) as rr:
+                            if rr.status == 200:
+                                s = BeautifulSoup(await rr.text(), 'html.parser')
+                                return [(a.get_text(strip=True), a.get('href')) for a in s.select('h2 a, .entry-title a, .search-result a')[:5]]
+                    except: return []
+                
+                s_tasks = [fetch_site(su) for su in sites]
+                s_batch = await asyncio.gather(*s_tasks, return_exceptions=True)
+                for sb in s_batch:
+                    if isinstance(sb, list):
+                        for tit, lnk in sb: add_result(tit, lnk)
+
     if results:
-        # Limit to 6 and try to upgrade to direct PDFs
+        # Pre-resolve and clean up
         results = results[:6]
-        logger.info(f"🔗 Resolving {len(results)} search leads...")
-        session = await get_session()
-        res_tasks = [get_direct_pdf_link(session, r['title'], r['url']) for r in results]
-        resolved = await asyncio.gather(*res_tasks, return_exceptions=True)
-        final = []
-        for orig, res in zip(results, resolved):
-            if isinstance(res, dict) and res.get('url'): final.append(res)
-            else: final.append(orig)
-        return final[:limit]
-
+        async with aiohttp.ClientSession() as res_sess:
+            tasks = [get_direct_pdf_link(res_sess, r['title'], r['url']) for r in results]
+            final_res = await asyncio.gather(*tasks, return_exceptions=True)
+            return [r if (isinstance(r, dict) and r.get('url')) else orig for r, orig in zip(final_res, results)]
+    
     return []
 
 async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.DEFAULT_TYPE, depth: int = 0):
