@@ -1,7 +1,6 @@
-python-telegram-bot[webhooks]>=21.0
-python-dotenv
-googlesearch-python
-requests
-aiohttp
-beautifulsoup4
-lxml
+python-telegram-bot[webhooks]==21.10
+python-dotenv==1.0.1
+googlesearch-python==1.2.5
+requests==2.32.3
+aiohttp==3.11.11
+beautifulsoup4==4.13.3
