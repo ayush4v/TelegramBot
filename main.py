@@ -201,7 +201,7 @@ async def get_direct_pdf_link(session, title: str, url: str) -> dict:
 
 async def search_papers(query_text: str, limit: int = 6) -> List[dict]:
     """
-    NUCLEAR PARALLEL SEARCH: Fresh session per call, 15+ parallel engines.
+    ULTRA-RELIABLE SEARCH: Static DB -> Portal Scraper -> Parallel SearXNG.
     """
     results = []
     seen_urls = set()
@@ -211,13 +211,31 @@ async def search_papers(query_text: str, limit: int = 6) -> List[dict]:
             results.append({"title": (title or query_text)[:80], "url": url})
             seen_urls.add(url)
 
-    # Broaden Query & Cleanup
-    q_short = query_text.lower().replace("previous year question paper", "").strip()
-    queries = [
-        f"{q_short} pyq paper",
-        f"{q_short} question paper",
-        f"{q_short} official website"
-    ]
+    # ─── LEVEL 0: STATIC DATABASE (Instant Reliable Links for Top Exams) ───
+    static_db = {
+        "jee main": [
+            {"title": "JEE Main 2024 Paper (Direct Link)", "url": "https://schools.aglasem.com/tag/jee-main-2024/"},
+            {"title": "JEE Main 2023 Previous Year Paper", "url": "https://schools.aglasem.com/tag/jee-main-2023/"},
+            {"title": "JEE Main Question Paper Library", "url": "https://schools.aglasem.com/tag/jee-main-question-papers/"}
+        ],
+        "neet": [
+            {"title": "NEET UG 2024 Paper & Analysis", "url": "https://schools.aglasem.com/tag/neet-2024/"},
+            {"title": "NEET UG 2023 Question Paper", "url": "https://schools.aglasem.com/tag/neet-2023/"},
+            {"title": "NEET Question Paper Archive", "url": "https://schools.aglasem.com/tag/neet-question-papers/"}
+        ],
+        "upsc": [{"title": "UPSC CSE Prelims Paper Hub", "url": "https://schools.aglasem.com/tag/upsc-question-papers/"}],
+        "cbse class 10": [{"title": "CBSE Class 10 Paper Collection", "url": "https://schools.aglasem.com/tag/cbse-class-10-question-papers/"}],
+        "cbse class 12": [{"title": "CBSE Class 12 Paper Collection", "url": "https://schools.aglasem.com/tag/cbse-class-12-question-papers/"}]
+    }
+    
+    q_low = query_text.lower()
+    for kw, links in static_db.items():
+        if kw in q_low:
+            for l in links: add_result(l['title'], l['url'])
+
+    # ─── LEVEL 1: Aggressive Multi-Tag Scraper ───
+    q_short = q_low.replace("previous year question paper", "").replace("paper", "").strip()
+    queries = [q_short, f"{q_short} pyq", query_text]
     
     async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as fresh_sess:
         for q in queries:
