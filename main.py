@@ -83,7 +83,7 @@ YEARS = ["2024", "2023", "2022", "2021", "2020", "2019", "2018", "Older"]
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Shows main categories."""
     # VERSION IDENTIFICATION
-    version = "v6.2 Nuclear Ultra"
+    version = "v6.3 Render Ultra"
     text = (
         f"👋 **Welcome to the Professional Exam Assistant Bot {version}**\n\n"
         "I can help you find and download Previous Year Question Papers (PYQs) for almost all major Indian exams.\n\n"
@@ -643,24 +643,24 @@ def main():
     # Message Handler for Direct Search (Free Text)
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
     
-    # Cloud Run Webhook Support
+    # PORT Binding is CRITICAL for Render
     PORT = int(os.environ.get("PORT", "10000"))
     WEBHOOK_URL = os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("WEBHOOK_URL") 
 
-    if WEBHOOK_URL:
-        # Use Webhooks if on Render/Cloud Run (High Performance)
-        logger.info(f"✅ Starting in WEBHOOK mode on port {PORT}")
-        logger.info(f"🔗 External URL: {WEBHOOK_URL}")
+    if WEBHOOK_URL or "RENDER" in os.environ or "PORT" in os.environ:
+        # Use Webhooks if on Render/Cloud (Required to keep Render service 'Live')
+        logger.info(f"✅ Starting in PRODUCTION mode (Webhook) on port {PORT}")
+        w_url = WEBHOOK_URL or "https://pyq-telegram-bot.onrender.com" # Fallback guess if not set
         
         application.run_webhook(
             listen="0.0.0.0",
             port=PORT,
             url_path=BOT_TOKEN,
-            webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}"
+            webhook_url=f"{w_url}/{BOT_TOKEN}"
         )
     else:
         # Standard Polling for local development (Laptop)
-        logger.info("📡 Starting in POLLING mode (Local Desktop)")
+        logger.info("📡 Starting in LOCAL mode (Polling)")
         application.run_polling()
 
 if __name__ == "__main__":
