@@ -199,182 +199,98 @@ async def get_direct_pdf_link(session, title: str, url: str) -> dict:
     except: pass
     return None
 
-async def search_papers(query: str, limit: int = 6) -> List[dict]:
+async def search_papers(query_text: str, limit: int = 6) -> List[dict]:
     """
-    Robust multi-engine search. Primary: SearXNG public instances (JSON API,
-    never blocks cloud IPs). Fallbacks: DDGS library, Bing, Google lib, trusted sites.
+    ULTRA-RELIABLE Parallel Multi-Engine Search.
+    Uses 10+ engines concurrently to bypass all blocks and timeouts.
     """
     results = []
     seen_urls = set()
 
     def add_result(title, url):
         if url and url.startswith("http") and url not in seen_urls and len(results) < limit:
-            results.append({"title": (title or query)[:80], "url": url})
+            results.append({"title": (title or query_text)[:80], "url": url})
             seen_urls.add(url)
 
-    # ─── ENGINE 0: SearXNG (More Instances + Improved Retry) ───
-    searxng_instances = [
-        "https://searx.be",
-        "https://searxng.world",
-        "https://search.mdosch.de",
-        "https://searx.tiekoetter.com",
-        "https://opnxng.com",
-        "https://search.ononoki.org",
-        "https://searx.work",
-        "https://searx.web-view.net",
+    # 🔄 QUERY RELAXATION: If first specific search fails, try broader one
+    queries_to_try = [
+        query_text,
+        query_text.replace(" question paper", "").replace(" paper", "") + " pdf",
+        query_text.split(" ")[0] + " " + query_text.split(" ")[-1] + " pyq pdf"
     ]
-    logger.info(f"🔎 [Engine 0] SearXNG: {query}")
-    try:
-        session = await get_session()
-        # Search for exact PDF terms
-        sq = f"{query} filetype:pdf"
-        for instance in searxng_instances:
-            if results: break
+
+    for q in queries_to_try:
+        if results: break
+        logger.info(f"🔎 [Search] Trying: {q}")
+        
+        # ─── PARALLEL ENGINE 0: SearXNG (Multi-instance flood) ───
+        searxng_instances = [
+            "https://searx.be", "https://searxng.world", "https://search.mdosch.de",
+            "https://searx.tiekoetter.com", "https://opnxng.com", "https://search.ononoki.org",
+            "https://searx.work", "https://search.inet-it.de", "https://searx.prvcy.eu"
+        ]
+        
+        async def fetch_searxng(instance, sq):
             try:
+                session = await get_session()
                 params = urllib.parse.urlencode({"q": sq, "format": "json"})
-                async with session.get(f"{instance}/search?{params}", timeout=10) as resp:
+                async with session.get(f"{instance}/search?{params}", timeout=8) as resp:
                     if resp.status == 200:
                         data = await resp.json(content_type=None)
-                        for item in data.get("results", [])[:10]:
-                            add_result(item.get("title", query), item.get("url", ""))
-            except: continue
-    except Exception as e:
-        logger.error(f"SearXNG overall error: {e}")
+                        return data.get("results", [])
+            except: return []
 
-    # ─── ENGINE 0.5: DuckDuckGo LITE (Scraping-safe on Cloud) ───
-    if not results:
-        logger.info(f"🔎 [Engine 0.5] DDG Lite: {query}")
-        try:
-            session = await get_session()
-            ddg_lite_url = f"https://lite.duckduckgo.com/lite/?q={urllib.parse.quote(query + ' pdf download')}"
-            headers_lite = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/122.0"}
-            async with session.get(ddg_lite_url, headers=headers_lite, timeout=10) as resp:
-                if resp.status == 200:
-                    l_soup = BeautifulSoup(await resp.text(), 'html.parser')
-                    for a in l_soup.select('a.result-link'):
-                        add_result(a.get_text(strip=True), a.get('href', ''))
-            logger.info(f"[Engine 0.5] DDG Lite found {len(results)} results")
-        except Exception as e:
-            logger.error(f"DDG Lite error: {e}")
-
-    # ─── ENGINE 1: duckduckgo-search library (cloud-safe internal API) ───
-    if not results:
-        logger.info(f"🔎 [Engine 1] DDGS library: {query}")
-        try:
-            from duckduckgo_search import DDGS
-            ddgs_results = await asyncio.to_thread(
-                lambda: list(DDGS().text(f"{query} filetype:pdf", max_results=12))
-            )
-            for r in ddgs_results:
-                add_result(r.get("title", query), r.get("href", ""))
-            logger.info(f"[Engine 1] DDGS found {len(results)} results")
-        except Exception as e:
-            logger.error(f"[Engine 1] DDGS failed: {e}")
-
-    # ─── ENGINE 2: DDGS without filetype filter ───
-    if not results:
-        logger.info(f"🔎 [Engine 2] DDGS (no filetype): {query}")
-        try:
-            from duckduckgo_search import DDGS
-            ddgs_results2 = await asyncio.to_thread(
-                lambda: list(DDGS().text(f"{query} question paper pdf download", max_results=12))
-            )
-            for r in ddgs_results2:
-                add_result(r.get("title", query), r.get("href", ""))
-            logger.info(f"[Engine 2] DDGS (no filetype) found {len(results)} results")
-        except Exception as e:
-            logger.error(f"[Engine 2] DDGS no-filter failed: {e}")
-
-    # ─── ENGINE 3: Bing scraping ───
-    if not results:
-        logger.info(f"🔎 [Engine 3] Bing: {query}")
-        try:
-            session = await get_session()
-            bing_url = f"https://www.bing.com/search?q={urllib.parse.quote(query + ' pdf previous year paper')}&count=15"
-            h3 = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-                "Accept-Language": "en-IN,en;q=0.9",
-            }
-            async with session.get(bing_url, headers=h3, timeout=10) as resp:
-                if resp.status == 200:
-                    b_soup = BeautifulSoup(await resp.text(), 'html.parser')
-                    for a in b_soup.select('h2 a, .b_algo h2 a')[:10]:
-                        add_result(a.get_text(strip=True), a.get('href', ''))
-            logger.info(f"[Engine 3] Bing found {len(results)} results")
-        except Exception as e:
-            logger.error(f"[Engine 3] Bing failed: {e}")
-
-    # ─── ENGINE 4: Google (googlesearch-python) ───
-    if not results:
-        logger.info(f"🔎 [Engine 4] Google lib: {query}")
-        try:
-            from googlesearch import search as gsearch
-            gs_results = await asyncio.to_thread(
-                lambda: list(gsearch(f"{query} filetype:pdf", num_results=10, sleep_interval=1))
-            )
-            for link in gs_results:
-                if isinstance(link, str):
-                    title = link.split('/')[-1].split('.pdf')[0].replace('-', ' ').replace('_', ' ')[:60] or query[:50]
-                    add_result(title, link)
-                elif hasattr(link, 'url'):
-                    add_result(getattr(link, 'title', query[:50]), link.url)
-            logger.info(f"[Engine 4] Google found {len(results)} results")
-        except Exception as e:
-            logger.error(f"[Engine 4] Google failed: {e}")
-
-    # ─── ENGINE 5: Trusted Indian Exam Sites (last resort) ───
-    if not results:
-        logger.info(f"🔎 [Engine 5] Trusted Indian sites: {query}")
-        q_enc = urllib.parse.quote(query)
-        trusted_sites = [
-            ("AglaSem", f"https://aglasem.com/?s={q_enc}"),
-            ("Examfare", f"https://www.examfare.com/?s={q_enc}"),
-            ("SarkariExam", f"https://sarkariexam.com/?s={q_enc}"),
-            ("myCBSEguide", f"https://mycbseguide.com/search/?q={q_enc}"),
-            ("StudiesToday", f"https://www.studiestoday.com/search/node/{q_enc}"),
-        ]
-        try:
-            session = await get_session()
-            for site_name, site_url in trusted_sites:
-                if len(results) >= limit: break
-                try:
-                    async with session.get(site_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=8) as resp:
+        tasks = [fetch_searxng(inst, q) for inst in searxng_instances]
+        all_searxng = await asyncio.gather(*tasks, return_exceptions=True)
+        for sub_results in all_searxng:
+            if isinstance(sub_results, list):
+                for sr in sub_results[:10]:
+                    add_result(sr.get("title", q), sr.get("url", ""))
+        
+        # ─── ENGINE 1: AglaSem Dedicated Tag Scraper (Reliable Indian Portals) ───
+        if not results:
+            tag_slug = q.lower().replace(" ", "-").replace("question-paper", "question-papers")
+            trusted_urls = [
+                f"https://schools.aglasem.com/tag/{tag_slug}/",
+                f"https://schools.aglasem.com/?s={urllib.parse.quote(q)}"
+            ]
+            try:
+                session = await get_session()
+                for t_url in trusted_urls:
+                    async with session.get(t_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=10) as resp:
                         if resp.status == 200:
                             s_soup = BeautifulSoup(await resp.text(), 'html.parser')
-                            for a in s_soup.find_all('a', href=True)[:50]:
-                                href = urllib.parse.urljoin(site_url, a['href'])
-                                txt = a.get_text(strip=True)
-                                score = 0
-                                if href.lower().endswith('.pdf'): score += 10
-                                if 'pdf' in href.lower(): score += 5
-                                if any(w in txt.lower() for w in ['paper', 'question', 'exam', 'pdf', 'pyq']): score += 3
-                                if score >= 3:
-                                    add_result(f"{site_name}: {txt}", href)
-                except Exception as se:
-                    logger.warning(f"[Engine 5] {site_name} failed: {se}")
-        except Exception as e:
-            logger.error(f"[Engine 5] overall failed: {e}")
-        logger.info(f"[Engine 5] Trusted sites found {len(results)} results")
+                            for a in s_soup.select('h2 a, .entry-title a, h3 a'):
+                                add_result(a.get_text(strip=True), a.get('href', ''))
+            except: pass
 
-    # ─── PDF Resolution: upgrade landing pages → direct PDFs ───
+        # ─── ENGINE 2: DuckDuckGo Lite ───
+        if not results:
+            try:
+                session = await get_session()
+                headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/122.0"}
+                async with session.get(f"https://lite.duckduckgo.com/lite/?q={urllib.parse.quote(q + ' pdf download')}", headers=headers, timeout=8) as resp:
+                    if resp.status == 200:
+                        l_soup = BeautifulSoup(await resp.text(), 'html.parser')
+                        for a in l_soup.select('a.result-link'):
+                            add_result(a.get_text(strip=True), a.get('href', ''))
+            except: pass
+
+    # Resolve links and return
     if results:
-        logger.info(f"🔗 Resolving {len(results)} URLs to direct PDFs...")
-        try:
-            session = await get_session()
-            tasks = [get_direct_pdf_link(session, r['title'], r['url']) for r in results]
-            resolved = await asyncio.gather(*tasks, return_exceptions=True)
-            final, final_seen = [], set()
-            for orig, res in zip(results, resolved):
-                if isinstance(res, dict) and res.get('url') and res['url'] not in final_seen:
-                    final.append(res); final_seen.add(res['url'])
-                elif orig['url'] not in final_seen:
-                    final.append(orig); final_seen.add(orig['url'])
-            results = final[:limit]
-        except Exception as e:
-            logger.error(f"PDF resolution failed: {e}")
+        # Limit to 6 and try to upgrade to direct PDFs
+        results = results[:6]
+        logger.info(f"🔗 Resolving {len(results)} search leads...")
+        session = await get_session()
+        res_tasks = [get_direct_pdf_link(session, r['title'], r['url']) for r in results]
+        resolved = await asyncio.gather(*res_tasks, return_exceptions=True)
+        final = []
+        for orig, res in zip(results, resolved):
+            if isinstance(res, dict) and res.get('url'): final.append(res)
+            else: final.append(orig)
+        return final[:limit]
 
-    logger.info(f"✅ Search complete — {len(results)} results for: {query}")
-    return results
+    return []
 
 async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.DEFAULT_TYPE, depth: int = 0):
     """Ultra-Reliable PDF delivery with deep link hunting (Up to 2 levels)."""
