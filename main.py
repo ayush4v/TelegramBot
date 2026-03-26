@@ -816,85 +816,63 @@ async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     if not BOT_TOKEN:
         logger.error("❌ ERROR: TELEGRAM_BOT_TOKEN is missing!")
-        print("❌ ERROR: TELEGRAM_BOT_TOKEN is missing!")
-        # If no token, raise an error so Render logs capture it properly
-        raise ValueError("TELEGRAM_BOT_TOKEN is not set in environment variables.")
-        
-    logger.info("🚀 Starting Bot Application...")
+        raise ValueError("TELEGRAM_BOT_TOKEN is not set.")
+
+    logger.info("🚀 Starting Bot Application v6.8...")
     
-    # 🌟 RENDER DEPLOYMENT HACK: Ensures the bot always listens to a Port
+    # Render environment detection
     PORT = int(os.environ.get("PORT", "10000"))
-    
+    WEBHOOK_URL = os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("WEBHOOK_URL")
+
     async def post_init(application):
-        """Tries to stay awake and ensures port binding based on mode."""
-        external_url = os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("WEBHOOK_URL")
-        
-        # 1. Start Health-Check Server ONLY if in Polling Mode (Avoids port conflict)
-        if not external_url:
-            try:
-                app = web.Application()
-                app.router.add_get('/', lambda r: web.Response(text="Bot is online!"))
-                runner = web.AppRunner(app)
-                await runner.setup()
-                site = web.TCPSite(runner, '0.0.0.0', PORT)
-                await site.start()
-                logger.info(f"✅ Polling mode: Keep-alive server started on port {PORT}")
-            except Exception as se:
-                logger.error(f"❌ Failed to start health server: {se}")
+        """Simplest post_init: No manual port binding to avoid conflicts."""
+        logger.info("✅ Bot post-init successful.")
 
-        # 2. Start Self-Pinger (Works in both modes to reduce Cold Starts)
-        if external_url:
-            async def self_pinger():
-                await asyncio.sleep(30) # Wait for startup to complete
-                while True:
-                    try:
-                        async with aiohttp.ClientSession() as sess:
-                            async with sess.get(external_url, timeout=15) as resp:
-                                logger.info(f"📡 Heartbeat (Self-ping): {resp.status}")
-                    except Exception as pe:
-                        logger.warning(f"⚠️ Heartbeat failed: {pe}")
-                    await asyncio.sleep(600) # Every 10 minutes
-            
-            asyncio.create_task(self_pinger())
-            logger.info(f"⚡ Self-pinger active for: {external_url}")
-
+    # Build application
     application = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
-    
-    # Base commands
+
+    # Register all handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("debug", debug_command))
-    
-    # Callback Handlers
     application.add_handler(CallbackQueryHandler(start, pattern="^back_cats$"))
     application.add_handler(CallbackQueryHandler(direct_search_callback, pattern="^direct_search$"))
     application.add_handler(CallbackQueryHandler(category_handler, pattern="^cat_"))
     application.add_handler(CallbackQueryHandler(exam_handler, pattern="^exam_"))
     application.add_handler(CallbackQueryHandler(year_handler, pattern="^year_"))
     application.add_handler(CallbackQueryHandler(download_callback, pattern="^dl_"))
-    
-    # Message Handler for Direct Search (Free Text)
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
-    
-    # PORT Binding is CRITICAL for Render
-    PORT = int(os.environ.get("PORT", "10000"))
-    WEBHOOK_URL = os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("WEBHOOK_URL") 
 
-    if WEBHOOK_URL or "RENDER" in os.environ or "PORT" in os.environ:
-        # Use Webhooks if on Render/Cloud (Required to keep Render service 'Live')
-        logger.info(f"✅ Starting in PRODUCTION mode (Webhook) on port {PORT}")
-        w_url = WEBHOOK_URL or "https://pyq-telegram-bot.onrender.com" # Fallback guess if not set
-        
+    # 🚀 STRATEGY: Use Webhook on Render, Polling everywhere else
+    if WEBHOOK_URL:
+        logger.info(f"📢 PRODUCTION: Setting up Webhook on port {PORT}")
+        logger.info(f"🔗 Webhook URL: {WEBHOOK_URL}")
         application.run_webhook(
             listen="0.0.0.0",
             port=PORT,
             url_path=BOT_TOKEN,
-            webhook_url=f"{w_url}/{BOT_TOKEN}"
+            webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}"
         )
     else:
-        # Standard Polling for local development (Laptop)
-        logger.info("📡 Starting in LOCAL mode (Polling)")
+        # Fallback for LOCAL or misconfigured Render
+        if "PORT" in os.environ:
+            # Special case: If on Render but no URL, we MUST bind a port to avoid crash
+            # We'll use a tiny background server just to satisfy Render's health check
+            import threading
+            from http.server import HTTPServer, BaseHTTPRequestHandler
+            class HealthCheck(BaseHTTPRequestHandler):
+                def do_GET(self):
+                    self.send_response(200); self.end_headers()
+                    self.wfile.write(b"Bot is alive (Polling Mode)")
+            def run_health_server():
+                httpd = HTTPServer(('0.0.0.0', PORT), HealthCheck)
+                httpd.serve_forever()
+            threading.Thread(target=run_health_server, daemon=True).start()
+            logger.info(f"📡 RENDER-POLLING: Health server on {PORT}, starting polling...")
+        
+        logger.info("📡 LOCAL/POLLING: Starting bot...")
         application.run_polling()
 
 if __name__ == "__main__":
     main()
+
