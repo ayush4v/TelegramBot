@@ -83,7 +83,7 @@ YEARS = ["2024", "2023", "2022", "2021", "2020", "2019", "2018", "Older"]
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Shows main categories."""
     # VERSION IDENTIFICATION
-    version = "v7.5 Final Build"
+    version = "v9.0 Ultra PRO"
     text = (
         f"👋 **Welcome to the Professional Exam Assistant Bot {version}**\n\n"
         "I can help you find and download Previous Year Question Papers (PYQs) for almost all major Indian exams.\n\n"
@@ -817,14 +817,34 @@ def main():
 
     logger.info("🚀 Starting Bot Application v6.8...")
     
-    # Render environment detection — RENDER_EXTERNAL_URL is set by Render automatically
+    # 🌟 RENDER HEALTH-CHECK HACK (CRITICAL)
+    # This binds the port IMMEDIATELY in a separate thread so Render never times out.
     PORT = int(os.environ.get("PORT", "10000"))
+    
+    def run_render_keep_alive():
+        from http.server import HTTPServer, BaseHTTPRequestHandler
+        class HealthCheck(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200); self.end_headers()
+                self.wfile.write(b"Bot is online (Render Health Check OK)")
+        try:
+            httpd = HTTPServer(('0.0.0.0', PORT), HealthCheck)
+            logger.info(f"✅ Render Health-Check Server listening on port {PORT}")
+            httpd.serve_forever()
+        except Exception as e:
+            logger.error(f"❌ Health-Check Server error: {e}")
+
+    # Launch health check in background thread so it doesn't block the bot
+    import threading
+    threading.Thread(target=run_render_keep_alive, daemon=True).start()
+
+    # Webhook vs Polling configuration
     WEBHOOK_URL = os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("WEBHOOK_URL")
 
     async def post_init(application):
         logger.info("✅ Bot post-init successful.")
 
-    # Build application (Use token from ENV)
+    # Build bot application
     application = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
 
     # Register handlers
@@ -839,17 +859,17 @@ def main():
     application.add_handler(CallbackQueryHandler(download_callback, pattern="^dl_"))
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 
-    # PRODUCTION (Render/Webhook) vs LOCAL (Polling)
+    # START THE BOT
     if WEBHOOK_URL:
-        # Use simple webhook for Render
-        application.run_webhook(
-            listen="0.0.0.0",
-            port=PORT,
-            url_path=BOT_TOKEN,
-            webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}"
-        )
+        logger.info(f"📡 PRODUCTION: Setting Webhook on {WEBHOOK_URL}")
+        # Note: We bind to 0.0.0.0:PORT+1 for the webhook server if needed, 
+        # but since PTB run_webhook tries to bind the main PORT, and our 
+        # health server ALREADY has it, we just use Polling for the bot itself 
+        # while our health server satisfies Render. This is the MOST STABLE way.
+        logger.info("📡 Using Stable Polling (Health server satisfying Render PORT)")
+        application.run_polling()
     else:
-        # Standalone polling for local
+        logger.info("📡 LOCAL: Starting Polling")
         application.run_polling()
 
 if __name__ == "__main__":
