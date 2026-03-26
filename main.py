@@ -83,7 +83,7 @@ YEARS = ["2024", "2023", "2022", "2021", "2020", "2019", "2018", "Older"]
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Shows main categories."""
     # VERSION IDENTIFICATION
-    version = "v7.0 Stable"
+    version = "v7.5 Final Build"
     text = (
         f"👋 **Welcome to the Professional Exam Assistant Bot {version}**\n\n"
         "I can help you find and download Previous Year Question Papers (PYQs) for almost all major Indian exams.\n\n"
@@ -438,19 +438,17 @@ async def search_papers(query_text: str, limit: int = 6) -> List[dict]:
         add_result(item['title'], item['url'])
     logger.info(f"[SEARCH] Static DB: {len(results)} results")
 
-    # ─── LAYER 2: DDGS library (handles cloud IPs better than scraping) ───
+    # ─── LAYER 2: DDG HTML Scraper (Fallback - no extra libraries needed!) ───
     if len(results) < 2:
         try:
-            from duckduckgo_search import DDGS
-            logger.info(f"[SEARCH] DDGS lookup: {query_text}")
-            ddgs_results = await asyncio.to_thread(
-                lambda: list(DDGS().text(f"{query_text} question paper pdf site:aglasem.com OR site:careers360.com", max_results=8))
-            )
-            for r in ddgs_results:
-                add_result(r.get('title', ''), r.get('href', ''))
-            logger.info(f"[SEARCH] DDGS: {len(ddgs_results)} results")
+            logger.info(f"[SEARCH] DDG HTML lookup: {query_text}")
+            async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as sess:
+                ddg_results = await search_ddg(sess, query_text, limit=8)
+                for r in ddg_results:
+                    add_result(r['title'], r['url'])
+            logger.info(f"[SEARCH] DDG HTML: {len(results)} results")
         except Exception as e:
-            logger.warning(f"[SEARCH] DDGS failed: {e}")
+            logger.warning(f"[SEARCH] DDG HTML failed: {e}")
 
     # ─── LAYER 3: Bing HTML scraper (last resort) ───
     if len(results) < 2:
@@ -784,13 +782,13 @@ async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         report.append(f"❌ SearXNG: {str(e)[:60]}")
 
-    # Test DDGS library
+    # Test DDG
     try:
-        from duckduckgo_search import DDGS
-        res = await asyncio.to_thread(lambda: list(DDGS().text(test_query, max_results=5)))
-        report.append(f"{'✅' if res else '❌'} DDGS library: {len(res)} results")
+        session = await get_session()
+        async with session.get(f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(test_query)}", timeout=8) as resp:
+            report.append(f"{'✅' if resp.status == 200 else '❌'} DDG HTML: status {resp.status}")
     except Exception as e:
-        report.append(f"❌ DDGS: {str(e)[:60]}")
+        report.append(f"❌ DDG: {str(e)[:60]}")
 
     # Test Bing
     try:
@@ -802,13 +800,12 @@ async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         report.append(f"❌ Bing: {str(e)[:60]}")
 
-    # Test Google lib
+    # Test Static DB
     try:
-        from googlesearch import search as gsearch
-        res = await asyncio.to_thread(lambda: list(gsearch(test_query, num_results=3, sleep_interval=0)))
-        report.append(f"{'✅' if res else '❌'} Google lib: {len(res)} results")
+        res = get_static_results("jee mains 2024")
+        report.append(f"{'✅' if res else '❌'} Static DB: {len(res)} entries matched")
     except Exception as e:
-        report.append(f"❌ Google lib: {str(e)[:60]}")
+        report.append(f"❌ Static DB: {str(e)[:60]}")
 
     full_report = "\n".join(report)
     await msg.edit_text(full_report, parse_mode="Markdown")
