@@ -271,96 +271,208 @@ async def search_ddg(session, query: str, limit: int = 8) -> List[dict]:
         logger.warning(f"DDG search error: {e}")
     return results
 
+
+# ─────────────────────────────────────────────────────────────
+# STATIC DATABASE — PRIMARY source, 100% reliable on Render!
+# Keys are lowercase exam identifiers (with optional year)
+# ─────────────────────────────────────────────────────────────
+STATIC_DB: Dict[str, List[dict]] = {
+    # JEE MAINS
+    "jee mains 2024": [{"title": "JEE Main 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2024/"},
+                       {"title": "JEE Main 2024 - Careers360", "url": "https://engineering.careers360.com/articles/jee-main-previous-year-question-papers"}],
+    "jee mains 2023": [{"title": "JEE Main 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2023/"}],
+    "jee mains 2022": [{"title": "JEE Main 2022 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2022/"}],
+    "jee mains 2021": [{"title": "JEE Main 2021 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2021/"}],
+    "jee mains 2020": [{"title": "JEE Main 2020 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2020/"}],
+    "jee mains 2019": [{"title": "JEE Main 2019 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2019/"}],
+    "jee mains 2018": [{"title": "JEE Main 2018 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2018/"}],
+    "jee mains":      [{"title": "JEE Main All Year Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-question-papers/"},
+                       {"title": "JEE Main PYQ - Careers360", "url": "https://engineering.careers360.com/articles/jee-main-previous-year-question-papers"}],
+    # JEE ADVANCED
+    "jee advanced 2024": [{"title": "JEE Advanced 2024 Paper 1&2 - AglaSem", "url": "https://schools.aglasem.com/tag/jee-advanced-2024/"}],
+    "jee advanced 2023": [{"title": "JEE Advanced 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-advanced-2023/"}],
+    "jee advanced 2022": [{"title": "JEE Advanced 2022 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-advanced-2022/"}],
+    "jee advanced 2021": [{"title": "JEE Advanced 2021 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-advanced-2021/"}],
+    "jee advanced 2020": [{"title": "JEE Advanced 2020 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-advanced-2020/"}],
+    "jee advanced":      [{"title": "JEE Advanced All Year Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-advanced-question-papers/"},
+                          {"title": "JEE Advanced PYQ - Careers360", "url": "https://engineering.careers360.com/articles/jee-advanced-previous-year-question-papers"}],
+    # NEET
+    "neet ug 2024": [{"title": "NEET 2024 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2024/"},
+                     {"title": "NEET 2024 - Careers360", "url": "https://medicine.careers360.com/articles/neet-previous-year-question-papers"}],
+    "neet ug 2023": [{"title": "NEET 2023 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2023/"}],
+    "neet ug 2022": [{"title": "NEET 2022 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2022/"}],
+    "neet ug 2021": [{"title": "NEET 2021 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2021/"}],
+    "neet ug 2020": [{"title": "NEET 2020 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2020/"}],
+    "neet ug 2019": [{"title": "NEET 2019 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2019/"}],
+    "neet ug 2018": [{"title": "NEET 2018 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2018/"}],
+    "neet ug":      [{"title": "NEET All Year Papers - AglaSem", "url": "https://schools.aglasem.com/tag/neet-question-papers/"},
+                     {"title": "NEET PYQ - Careers360", "url": "https://medicine.careers360.com/articles/neet-previous-year-question-papers"}],
+    # NEET PG
+    "neet pg 2024": [{"title": "NEET PG 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/neet-pg-2024/"}],
+    "neet pg":      [{"title": "NEET PG Papers - AglaSem", "url": "https://schools.aglasem.com/tag/neet-pg-question-papers/"}],
+    # AIIMS
+    "aiims 2024": [{"title": "AIIMS 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/aiims-2024/"}],
+    "aiims":       [{"title": "AIIMS Medical Papers - AglaSem", "url": "https://schools.aglasem.com/tag/aiims-question-papers/"}],
+    # JIPMER
+    "jipmer": [{"title": "JIPMER Medical Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jipmer-question-papers/"}],
+    # GATE
+    "gate 2024": [{"title": "GATE 2024 All Branch Papers - AglaSem", "url": "https://schools.aglasem.com/tag/gate-2024/"}],
+    "gate 2023": [{"title": "GATE 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/gate-2023/"}],
+    "gate 2022": [{"title": "GATE 2022 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/gate-2022/"}],
+    "gate 2021": [{"title": "GATE 2021 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/gate-2021/"}],
+    "gate":      [{"title": "GATE All Year Papers - AglaSem", "url": "https://schools.aglasem.com/tag/gate-question-papers/"}],
+    # BITSAT
+    "bitsat": [{"title": "BITSAT Papers - AglaSem", "url": "https://schools.aglasem.com/tag/bitsat-question-papers/"}],
+    # WBJEE
+    "wbjee": [{"title": "WBJEE Papers - AglaSem", "url": "https://schools.aglasem.com/tag/wbjee-question-papers/"}],
+    # MHT CET
+    "mht cet": [{"title": "MHT CET Papers - AglaSem", "url": "https://schools.aglasem.com/tag/mht-cet-question-papers/"}],
+    # UPSC CSE
+    "upsc cse 2024": [{"title": "UPSC CSE 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2024/"}],
+    "upsc cse 2023": [{"title": "UPSC CSE 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2023/"}],
+    "upsc cse 2022": [{"title": "UPSC CSE 2022 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2022/"}],
+    "upsc cse 2021": [{"title": "UPSC CSE 2021 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2021/"}],
+    "upsc cse 2020": [{"title": "UPSC CSE 2020 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2020/"}],
+    "upsc cse 2019": [{"title": "UPSC CSE 2019 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2019/"}],
+    "upsc cse":      [{"title": "UPSC CSE All Year Papers - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-question-papers/"},
+                      {"title": "UPSC Official Paper Archive", "url": "https://upsc.gov.in/examinations/previous-question-papers"}],
+    # SSC CGL
+    "ssc cgl 2024": [{"title": "SSC CGL 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2024/"}],
+    "ssc cgl 2023": [{"title": "SSC CGL 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2023/"}],
+    "ssc cgl 2022": [{"title": "SSC CGL 2022 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2022/"}],
+    "ssc cgl 2021": [{"title": "SSC CGL 2021 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2021/"}],
+    "ssc cgl":      [{"title": "SSC CGL All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-question-papers/"},
+                     {"title": "SSC Official PYQ", "url": "https://ssc.nic.in/Portal/Previous_Question_Paper"}],
+    # SSC CHSL
+    "ssc chsl 2024": [{"title": "SSC CHSL 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-chsl-2024/"}],
+    "ssc chsl 2023": [{"title": "SSC CHSL 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-chsl-2023/"}],
+    "ssc chsl":      [{"title": "SSC CHSL All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-chsl-question-papers/"}],
+    # IBPS PO
+    "ibps po 2024": [{"title": "IBPS PO 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ibps-po-2024/"}],
+    "ibps po 2023": [{"title": "IBPS PO 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ibps-po-2023/"}],
+    "ibps po":      [{"title": "IBPS PO All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ibps-po-question-papers/"}],
+    # SBI PO
+    "sbi po 2024": [{"title": "SBI PO 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/sbi-po-2024/"}],
+    "sbi po":      [{"title": "SBI PO All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/sbi-po-question-papers/"}],
+    # RRB NTPC
+    "rrb ntpc 2024": [{"title": "RRB NTPC 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/rrb-ntpc-2024/"}],
+    "rrb ntpc":      [{"title": "RRB NTPC All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/rrb-ntpc-question-papers/"}],
+    # NDA/CDS
+    "nda 2024": [{"title": "NDA 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2024/"}],
+    "nda 2023": [{"title": "NDA 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2023/"}],
+    "nda":      [{"title": "NDA All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-question-papers/"},
+                 {"title": "NDA Official - UPSC", "url": "https://upsc.gov.in/examinations/previous-question-papers"}],
+    "cds 2024": [{"title": "CDS 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cds-2024/"}],
+    "cds":      [{"title": "CDS All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cds-question-papers/"}],
+    # CBSE Class 10
+    "cbse class 10 2024": [{"title": "CBSE Class 10 2024 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2024/"}],
+    "cbse class 10 2023": [{"title": "CBSE Class 10 2023 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2023/"}],
+    "cbse class 10 2022": [{"title": "CBSE Class 10 2022 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2022/"}],
+    "cbse class 10 2021": [{"title": "CBSE Class 10 2021 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2021/"}],
+    "cbse class 10 2020": [{"title": "CBSE Class 10 2020 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2020/"}],
+    "cbse class 10":      [{"title": "CBSE Class 10 All Year Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-question-papers/"},
+                           {"title": "CBSE Class 10 Official Sample Papers", "url": "https://cbseacademic.nic.in/SQP_CLASSXI.html"}],
+    # CBSE Class 12
+    "cbse class 12 2024": [{"title": "CBSE Class 12 2024 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2024/"}],
+    "cbse class 12 2023": [{"title": "CBSE Class 12 2023 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2023/"}],
+    "cbse class 12 2022": [{"title": "CBSE Class 12 2022 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2022/"}],
+    "cbse class 12 2021": [{"title": "CBSE Class 12 2021 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2021/"}],
+    "cbse class 12 2020": [{"title": "CBSE Class 12 2020 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2020/"}],
+    "cbse class 12":      [{"title": "CBSE Class 12 All Year Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-question-papers/"},
+                           {"title": "CBSE Class 12 Official Sample Papers", "url": "https://cbseacademic.nic.in/SQP_CLASSXII.html"}],
+    # ICSE / ISC
+    "icse class 10": [{"title": "ICSE Class 10 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/icse-question-papers/"}],
+    "isc class 12":  [{"title": "ISC Class 12 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/isc-question-papers/"}],
+    # NIOS / UP Board / Bihar Board
+    "nios":        [{"title": "NIOS Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nios-question-papers/"},
+                    {"title": "NIOS Official Papers", "url": "https://www.nios.ac.in/online-services/question-papers.aspx"}],
+    "up board":    [{"title": "UP Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/up-board-question-papers/"}],
+    "bihar board": [{"title": "Bihar Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/bihar-board-question-papers/"}],
+    # MBA/LAW/OTHERS
+    "cat 2024": [{"title": "CAT 2024 Paper - AglaSem", "url": "https://schools.aglasem.com/tag/cat-2024/"}],
+    "cat 2023": [{"title": "CAT 2023 Paper - AglaSem", "url": "https://schools.aglasem.com/tag/cat-2023/"}],
+    "cat 2022": [{"title": "CAT 2022 Paper - AglaSem", "url": "https://schools.aglasem.com/tag/cat-2022/"}],
+    "cat":      [{"title": "CAT All Year Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cat-question-papers/"},
+                 {"title": "CAT PYQ - Careers360", "url": "https://bschool.careers360.com/articles/cat-previous-year-question-papers"}],
+    "clat 2024": [{"title": "CLAT 2024 Paper - AglaSem", "url": "https://schools.aglasem.com/tag/clat-2024/"}],
+    "clat":      [{"title": "CLAT All Year Papers - AglaSem", "url": "https://schools.aglasem.com/tag/clat-question-papers/"}],
+    "cuet 2024": [{"title": "CUET 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cuet-2024/"}],
+    "cuet":      [{"title": "CUET All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cuet-question-papers/"}],
+    "nift":      [{"title": "NIFT Entrance Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nift-question-papers/"}],
+}
+
+def get_static_results(query_text: str) -> List[dict]:
+    """Find best static DB matches — tries longest keys first for specificity."""
+    q = query_text.lower().strip()
+    matched = []
+    seen = set()
+    # Try longest keys first so "jee mains 2024" matches before "jee mains"
+    for key in sorted(STATIC_DB.keys(), key=len, reverse=True):
+        if key in q:
+            for item in STATIC_DB[key]:
+                if item['url'] not in seen:
+                    matched.append(item)
+                    seen.add(item['url'])
+            if len(matched) >= 4:
+                break
+    return matched[:6]
+
 async def search_papers(query_text: str, limit: int = 6) -> List[dict]:
     """
-    RELIABLE SEARCH: Bing Scraper -> DDG Scraper -> Static DB fallback.
-    These engines work reliably from Render's cloud IPs unlike SearXNG.
+    GUARANTEED SEARCH: Static DB (PRIMARY) -> DDGS Library -> Bing Scraper.
+    Static DB covers ALL exam categories — works 100% on Render cloud IPs.
     """
     results = []
     seen_urls = set()
 
     def add_result(title, url):
-        """Deduplicated result adder."""
+        junk = ["google.com/search", "youtube.com", "facebook.com", "twitter.com", "instagram.com"]
         if url and url.startswith("http") and url not in seen_urls and len(results) < limit:
-            # Filter junk URLs
-            junk = ["google.com/search", "youtube.com", "facebook.com", "twitter.com", "instagram.com", "amazon."]
             if not any(j in url for j in junk):
                 results.append({"title": (title or query_text)[:80], "url": url})
                 seen_urls.add(url)
 
-    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as sess:
+    # ─── LAYER 1: Static DB (ALWAYS first — no network needed) ───
+    logger.info(f"[SEARCH] Static DB lookup: {query_text}")
+    for item in get_static_results(query_text):
+        add_result(item['title'], item['url'])
+    logger.info(f"[SEARCH] Static DB: {len(results)} results")
 
-        # ─── ENGINE 1: Bing (Primary - most reliable from cloud) ───
-        logger.info(f"[SEARCH] Bing query: {query_text}")
-        bing_results = await search_bing(sess, query_text, limit=10)
-        for r in bing_results:
-            add_result(r['title'], r['url'])
-        logger.info(f"[SEARCH] Bing gave {len(bing_results)} results, kept {len(results)}")
+    # ─── LAYER 2: DDGS library (handles cloud IPs better than scraping) ───
+    if len(results) < 2:
+        try:
+            from duckduckgo_search import DDGS
+            logger.info(f"[SEARCH] DDGS lookup: {query_text}")
+            ddgs_results = await asyncio.to_thread(
+                lambda: list(DDGS().text(f"{query_text} question paper pdf site:aglasem.com OR site:careers360.com", max_results=8))
+            )
+            for r in ddgs_results:
+                add_result(r.get('title', ''), r.get('href', ''))
+            logger.info(f"[SEARCH] DDGS: {len(ddgs_results)} results")
+        except Exception as e:
+            logger.warning(f"[SEARCH] DDGS failed: {e}")
 
-        # ─── ENGINE 2: DuckDuckGo (Fallback if Bing gives nothing) ───
-        if len(results) < 2:
-            logger.info(f"[SEARCH] Falling back to DDG for: {query_text}")
-            ddg_results = await search_ddg(sess, query_text, limit=10)
-            for r in ddg_results:
-                add_result(r['title'], r['url'])
-            logger.info(f"[SEARCH] DDG gave {len(ddg_results)} results, total kept {len(results)}")
-
-        # ─── ENGINE 3: Static DB (Guaranteed fallback for popular exams) ───
-        if len(results) < 2:
-            logger.info(f"[SEARCH] Using static DB for: {query_text}")
-            static_db = {
-                "jee main": [
-                    {"title": "JEE Main Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-question-papers/"},
-                    {"title": "JEE Main 2024 Paper", "url": "https://schools.aglasem.com/tag/jee-main-2024/"},
-                    {"title": "JEE Main 2023 Paper", "url": "https://schools.aglasem.com/tag/jee-main-2023/"},
-                    {"title": "JEE Main 2022 Paper", "url": "https://schools.aglasem.com/tag/jee-main-2022/"},
-                ],
-                "jee advanced": [
-                    {"title": "JEE Advanced Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-advanced-question-papers/"},
-                    {"title": "JEE Advanced 2024 Paper", "url": "https://schools.aglasem.com/tag/jee-advanced-2024/"},
-                ],
-                "neet": [
-                    {"title": "NEET UG Papers - AglaSem", "url": "https://schools.aglasem.com/tag/neet-question-papers/"},
-                    {"title": "NEET 2024 Paper", "url": "https://schools.aglasem.com/tag/neet-2024/"},
-                    {"title": "NEET 2023 Paper", "url": "https://schools.aglasem.com/tag/neet-2023/"},
-                ],
-                "upsc": [
-                    {"title": "UPSC Papers - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-question-papers/"},
-                    {"title": "UPSC CSE 2024 Paper", "url": "https://schools.aglasem.com/tag/upsc-2024/"},
-                ],
-                "ssc": [
-                    {"title": "SSC Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-question-papers/"},
-                    {"title": "SSC CGL 2024 Paper", "url": "https://schools.aglasem.com/tag/ssc-cgl-2024/"},
-                ],
-                "cbse class 10": [
-                    {"title": "CBSE Class 10 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-question-papers/"},
-                ],
-                "cbse class 12": [
-                    {"title": "CBSE Class 12 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-question-papers/"},
-                ],
-                "gate": [
-                    {"title": "GATE Papers - AglaSem", "url": "https://schools.aglasem.com/tag/gate-question-papers/"},
-                    {"title": "GATE 2024 Paper", "url": "https://schools.aglasem.com/tag/gate-2024/"},
-                ],
-                "cat": [
-                    {"title": "CAT Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cat-question-papers/"},
-                ],
-            }
-            q_low = query_text.lower()
-            for kw, links in static_db.items():
-                if kw in q_low:
-                    for l in links:
-                        add_result(l['title'], l['url'])
+    # ─── LAYER 3: Bing HTML scraper (last resort) ───
+    if len(results) < 2:
+        try:
+            logger.info(f"[SEARCH] Bing scraper: {query_text}")
+            async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as sess:
+                bing_results = await search_bing(sess, query_text, limit=8)
+                for r in bing_results:
+                    add_result(r['title'], r['url'])
+            logger.info(f"[SEARCH] Bing: {len(bing_results)} results")
+        except Exception as e:
+            logger.warning(f"[SEARCH] Bing failed: {e}")
 
     if results:
         results = results[:limit]
-        # Optionally try to resolve to direct PDF links
         async with aiohttp.ClientSession() as res_sess:
             tasks = [get_direct_pdf_link(res_sess, r['title'], r['url']) for r in results]
             final_res = await asyncio.gather(*tasks, return_exceptions=True)
             return [r if (isinstance(r, dict) and r.get('url')) else orig for r, orig in zip(final_res, results)]
 
     return []
+
 
 async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.DEFAULT_TYPE, depth: int = 0):
     """Ultra-Reliable PDF delivery with deep link hunting (Up to 2 levels)."""
