@@ -1,6 +1,8 @@
-python-telegram-bot[webhooks]==21.10
-python-dotenv==1.0.1
-requests==2.32.3
-aiohttp==3.11.11
-beautifulsoup4==4.13.3
-duckduckgo-search==6.3.7
+python-telegram-bot>=21.0
+python-dotenv
+requests
+aiohttp
+beautifulsoup4
+duckduckgo-search
+httpx
+tornado
