@@ -580,27 +580,81 @@ async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.
     return False
 
 async def year_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Speed-optimized result rendering."""
+    """Result renderer — uses Static DB directly for guaranteed results."""
     query = update.callback_query
-    await query.answer("Fetching results...") # Instant feedback
+    await query.answer("Fetching results...")
     parts = query.data.split("_")
     cat_name, exam_name, year = parts[1], parts[2], parts[3]
-    
-    # Use the full descriptive query from EXAM_CATEGORIES for better search results
-    category_exams = EXAM_CATEGORIES.get(cat_name, {})
-    base_query = category_exams.get(exam_name, f"{exam_name} Previous Year Question Paper")
-    year_str = "" if year == "Older" else year
-    final_query = f"{base_query} {year_str}".strip()
 
     await query.edit_message_text(f"⚡ **Searching {exam_name} ({year})...**", parse_mode="Markdown")
-    
-    # Show typing indicator for better UX
     await context.bot.send_chat_action(chat_id=query.message.chat_id, action="typing")
-    
-    results = await search_papers(final_query)
+
+    # ── DIRECT STATIC DB LOOKUP (exam_name + year, no search needed) ──
+    # Map exam button names to their static DB key prefixes
+    EXAM_TO_KEY = {
+        "JEE Mains":      "jee mains",
+        "JEE Advanced":   "jee advanced",
+        "GATE":           "gate",
+        "BITSAT":         "bitsat",
+        "WBJEE":          "wbjee",
+        "MHT CET":        "mht cet",
+        "NEET UG":        "neet ug",
+        "NEET PG":        "neet pg",
+        "AIIMS":          "aiims",
+        "JIPMER":         "jipmer",
+        "UPSC CSE (IAS)": "upsc cse",
+        "SSC CGL":        "ssc cgl",
+        "SSC CHSL":       "ssc chsl",
+        "IBPS PO":        "ibps po",
+        "SBI PO":         "sbi po",
+        "RRB NTPC":       "rrb ntpc",
+        "NDA/CDS":        "nda",
+        "CBSE Class 10":  "cbse class 10",
+        "CBSE Class 12":  "cbse class 12",
+        "ICSE Class 10":  "icse class 10",
+        "ISC Class 12":   "isc class 12",
+        "NIOS":           "nios",
+        "UP Board":       "up board",
+        "Bihar Board":    "bihar board",
+        "CAT":            "cat",
+        "CLAT":           "clat",
+        "NIFT":           "nift",
+        "CUET":           "cuet",
+    }
+
+    results = []
+    seen_urls = set()
+
+    def add(title, url):
+        if url and url not in seen_urls:
+            results.append({"title": title[:80], "url": url})
+            seen_urls.add(url)
+
+    base_key = EXAM_TO_KEY.get(exam_name, exam_name.lower())
+
+    # Try year-specific key first, then fall back to base key
+    if year != "Older":
+        year_key = f"{base_key} {year}"
+        for item in STATIC_DB.get(year_key, []):
+            add(item['title'], item['url'])
+
+    # Always also add base key results (all-year archive)
+    for item in STATIC_DB.get(base_key, []):
+        add(item['title'], item['url'])
+
+    # If somehow static DB has no entry, fall back to search
     if not results:
-        await query.edit_message_text(f"❌ **No results.** Please try another year.", 
-                                     reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data=f"exam_{cat_name}_{exam_name}")]]))
+        category_exams = EXAM_CATEGORIES.get(cat_name, {})
+        base_query = category_exams.get(exam_name, f"{exam_name} Previous Year Question Paper")
+        year_str = "" if year == "Older" else year
+        final_query = f"{exam_name} {year_str} question paper".strip()
+        logger.info(f"[YEAR_HANDLER] Static miss for {exam_name}, falling back to search: {final_query}")
+        results = await search_papers(final_query)
+
+    if not results:
+        await query.edit_message_text(
+            f"❌ **No results found for {exam_name} ({year}).**\n\nPlease try another year.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data=f"exam_{cat_name}_{exam_name}")]]))
         return
 
     response = f"📚 **Top Results ({year}):**\n\n"
