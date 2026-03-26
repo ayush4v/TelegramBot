@@ -201,98 +201,165 @@ async def get_direct_pdf_link(session, title: str, url: str) -> dict:
     except: pass
     return None
 
+# Rotating User-Agents to avoid detection on cloud IPs
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+]
+import random
+
+async def search_bing(session, query: str, limit: int = 8) -> List[dict]:
+    """Scrape Bing search results - works reliably from cloud IPs."""
+    results = []
+    try:
+        headers = {
+            "User-Agent": random.choice(USER_AGENTS),
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Referer": "https://www.bing.com/",
+        }
+        encoded_q = urllib.parse.quote(f"{query} filetype:pdf OR site:aglasem.com OR site:examfare.com")
+        url = f"https://www.bing.com/search?q={encoded_q}&count=15&setlang=en"
+        async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=12)) as resp:
+            if resp.status == 200:
+                html = await resp.text()
+                soup = BeautifulSoup(html, 'html.parser')
+                for li in soup.select('li.b_algo')[:limit]:
+                    a_tag = li.select_one('h2 a')
+                    if a_tag:
+                        title = a_tag.get_text(strip=True)
+                        href = a_tag.get('href', '')
+                        if href and href.startswith('http'):
+                            results.append({"title": title[:80], "url": href})
+            else:
+                logger.warning(f"Bing returned status {resp.status}")
+    except Exception as e:
+        logger.warning(f"Bing search error: {e}")
+    return results
+
+async def search_ddg(session, query: str, limit: int = 8) -> List[dict]:
+    """Scrape DuckDuckGo HTML results - cloud-IP friendly fallback."""
+    results = []
+    try:
+        headers = {
+            "User-Agent": random.choice(USER_AGENTS),
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
+        encoded_q = urllib.parse.quote(f"{query} pdf")
+        url = f"https://html.duckduckgo.com/html/?q={encoded_q}"
+        async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=12)) as resp:
+            if resp.status == 200:
+                html = await resp.text()
+                soup = BeautifulSoup(html, 'html.parser')
+                for a_tag in soup.select('a.result__a')[:limit]:
+                    title = a_tag.get_text(strip=True)
+                    href = a_tag.get('href', '')
+                    # DDG wraps URLs, need to extract actual URL
+                    if 'uddg=' in href:
+                        try:
+                            parsed = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
+                            href = urllib.parse.unquote(parsed.get('uddg', [''])[0])
+                        except: pass
+                    if href and href.startswith('http'):
+                        results.append({"title": title[:80], "url": href})
+            else:
+                logger.warning(f"DDG returned status {resp.status}")
+    except Exception as e:
+        logger.warning(f"DDG search error: {e}")
+    return results
+
 async def search_papers(query_text: str, limit: int = 6) -> List[dict]:
     """
-    ULTRA-RELIABLE SEARCH: Static DB -> Portal Scraper -> Parallel SearXNG.
+    RELIABLE SEARCH: Bing Scraper -> DDG Scraper -> Static DB fallback.
+    These engines work reliably from Render's cloud IPs unlike SearXNG.
     """
     results = []
     seen_urls = set()
 
     def add_result(title, url):
+        """Deduplicated result adder."""
         if url and url.startswith("http") and url not in seen_urls and len(results) < limit:
-            results.append({"title": (title or query_text)[:80], "url": url})
-            seen_urls.add(url)
+            # Filter junk URLs
+            junk = ["google.com/search", "youtube.com", "facebook.com", "twitter.com", "instagram.com", "amazon."]
+            if not any(j in url for j in junk):
+                results.append({"title": (title or query_text)[:80], "url": url})
+                seen_urls.add(url)
 
-    # ─── LEVEL 0: STATIC DATABASE (Guaranteed Links) ───
-    static_db = {
-        "jee main": [
-            {"title": "JEE Main Official Archive (Direct)", "url": "https://schools.aglasem.com/tag/jee-main-question-papers/"},
-            {"title": "JEE Main 2024 Paper", "url": "https://schools.aglasem.com/tag/jee-main-2024/"},
-            {"title": "JEE Main 2023 Paper", "url": "https://schools.aglasem.com/tag/jee-main-2023/"}
-        ],
-        "neet": [
-            {"title": "NEET UG Official Archive (Direct)", "url": "https://schools.aglasem.com/tag/neet-question-papers/"},
-            {"title": "NEET UG 2024 Paper", "url": "https://schools.aglasem.com/tag/neet-2024/"}
-        ],
-        "upsc": [{"title": "UPSC Exam Library", "url": "https://schools.aglasem.com/tag/upsc-question-papers/"}],
-        "cbse": [{"title": "CBSE Board Paper Hub", "url": "https://schools.aglasem.com/tag/cbse-question-papers/"}]
-    }
-    
-    q_low = query_text.lower()
-    for kw, links in static_db.items():
-        if kw in q_low:
-            for l in links: add_result(l['title'], l['url'])
+    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as sess:
 
-    # ─── LEVEL 1: Super-Short Scraper (Bypasses all hurdles) ───
-    q_simple = q_low.replace("previous year question paper", "").replace("paper", "").strip()
-    queries = [q_simple, f"{q_simple} pyq", query_text[:30]]
-    
-    async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as fresh_sess:
-        for q in queries:
-            if results: break
-            
-            # ─── ENGINE 0: Direct Portal Scrapers (UNBLOCKABLE) ───
-            # These are specific for Indian educational exams
-            slug = q.lower().replace(" ", "-")
-            targets = [
-                f"https://schools.aglasem.com/tag/{slug}/",
-                f"https://schools.aglasem.com/?s={urllib.parse.quote(q)}",
-                f"https://www.examfare.com/tag/{slug}/",
-                f"https://www.careers360.com/search?q={urllib.parse.quote(q)}"
-            ]
-            
-            async def scrape(u):
-                try:
-                    h = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0"}
-                    async with fresh_sess.get(u, headers=h, timeout=12) as r:
-                        if r.status == 200:
-                            s = BeautifulSoup(await r.text(), 'html.parser')
-                            return [(a.get_text(strip=True), a.get('href')) for a in s.select('h2 a, .entry-title a, .search-result a')[:10]]
-                except: return []
-            
-            batches = await asyncio.gather(*[scrape(u) for u in targets], return_exceptions=True)
-            for b in batches:
-                if isinstance(b, list):
-                    for t, l in b: add_result(f"Official: {t}", l)
+        # ─── ENGINE 1: Bing (Primary - most reliable from cloud) ───
+        logger.info(f"[SEARCH] Bing query: {query_text}")
+        bing_results = await search_bing(sess, query_text, limit=10)
+        for r in bing_results:
+            add_result(r['title'], r['url'])
+        logger.info(f"[SEARCH] Bing gave {len(bing_results)} results, kept {len(results)}")
 
-            # ─── ENGINE 1: Multi-Parallel SearXNG Flooding ───
-            if not results:
-                instances = [
-                    "https://searx.be", "https://searxng.world", "https://search.mdosch.de",
-                    "https://searx.prvcy.eu", "https://searx.tiekoetter.com", "https://opnxng.com"
-                ]
-                async def fetch_sx(inst, sq):
-                    try:
-                        p = urllib.parse.urlencode({"q": f"{sq} filetype:pdf", "format": "json"})
-                        async with fresh_sess.get(f"{inst}/search?{p}", timeout=8) as rr:
-                            if rr.status == 200:
-                                d = await rr.json()
-                                return d.get('results', [])
-                    except: return []
-                
-                sx_batch = await asyncio.gather(*[fetch_sx(i, q) for i in instances], return_exceptions=True)
-                for sxb in sx_batch:
-                    if isinstance(sxb, list):
-                        for item in sxb: add_result(item.get('title', q), item.get('url', ''))
+        # ─── ENGINE 2: DuckDuckGo (Fallback if Bing gives nothing) ───
+        if len(results) < 2:
+            logger.info(f"[SEARCH] Falling back to DDG for: {query_text}")
+            ddg_results = await search_ddg(sess, query_text, limit=10)
+            for r in ddg_results:
+                add_result(r['title'], r['url'])
+            logger.info(f"[SEARCH] DDG gave {len(ddg_results)} results, total kept {len(results)}")
+
+        # ─── ENGINE 3: Static DB (Guaranteed fallback for popular exams) ───
+        if len(results) < 2:
+            logger.info(f"[SEARCH] Using static DB for: {query_text}")
+            static_db = {
+                "jee main": [
+                    {"title": "JEE Main Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-question-papers/"},
+                    {"title": "JEE Main 2024 Paper", "url": "https://schools.aglasem.com/tag/jee-main-2024/"},
+                    {"title": "JEE Main 2023 Paper", "url": "https://schools.aglasem.com/tag/jee-main-2023/"},
+                    {"title": "JEE Main 2022 Paper", "url": "https://schools.aglasem.com/tag/jee-main-2022/"},
+                ],
+                "jee advanced": [
+                    {"title": "JEE Advanced Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-advanced-question-papers/"},
+                    {"title": "JEE Advanced 2024 Paper", "url": "https://schools.aglasem.com/tag/jee-advanced-2024/"},
+                ],
+                "neet": [
+                    {"title": "NEET UG Papers - AglaSem", "url": "https://schools.aglasem.com/tag/neet-question-papers/"},
+                    {"title": "NEET 2024 Paper", "url": "https://schools.aglasem.com/tag/neet-2024/"},
+                    {"title": "NEET 2023 Paper", "url": "https://schools.aglasem.com/tag/neet-2023/"},
+                ],
+                "upsc": [
+                    {"title": "UPSC Papers - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-question-papers/"},
+                    {"title": "UPSC CSE 2024 Paper", "url": "https://schools.aglasem.com/tag/upsc-2024/"},
+                ],
+                "ssc": [
+                    {"title": "SSC Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-question-papers/"},
+                    {"title": "SSC CGL 2024 Paper", "url": "https://schools.aglasem.com/tag/ssc-cgl-2024/"},
+                ],
+                "cbse class 10": [
+                    {"title": "CBSE Class 10 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-question-papers/"},
+                ],
+                "cbse class 12": [
+                    {"title": "CBSE Class 12 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-question-papers/"},
+                ],
+                "gate": [
+                    {"title": "GATE Papers - AglaSem", "url": "https://schools.aglasem.com/tag/gate-question-papers/"},
+                    {"title": "GATE 2024 Paper", "url": "https://schools.aglasem.com/tag/gate-2024/"},
+                ],
+                "cat": [
+                    {"title": "CAT Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cat-question-papers/"},
+                ],
+            }
+            q_low = query_text.lower()
+            for kw, links in static_db.items():
+                if kw in q_low:
+                    for l in links:
+                        add_result(l['title'], l['url'])
 
     if results:
-        # Pre-resolve and clean up
-        results = results[:6]
+        results = results[:limit]
+        # Optionally try to resolve to direct PDF links
         async with aiohttp.ClientSession() as res_sess:
             tasks = [get_direct_pdf_link(res_sess, r['title'], r['url']) for r in results]
             final_res = await asyncio.gather(*tasks, return_exceptions=True)
             return [r if (isinstance(r, dict) and r.get('url')) else orig for r, orig in zip(final_res, results)]
-    
+
     return []
 
 async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.DEFAULT_TYPE, depth: int = 0):
