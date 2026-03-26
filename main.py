@@ -83,7 +83,7 @@ YEARS = ["2024", "2023", "2022", "2021", "2020", "2019", "2018", "Older"]
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Shows main categories."""
     # VERSION IDENTIFICATION
-    version = "v9.0 Ultra PRO"
+    version = "v9.5 PRO Ready"
     text = (
         f"👋 **Welcome to the Professional Exam Assistant Bot {version}**\n\n"
         "I can help you find and download Previous Year Question Papers (PYQs) for almost all major Indian exams.\n\n"
@@ -148,14 +148,15 @@ session_instance: aiohttp.ClientSession = None
 async def get_session():
     global session_instance
     if session_instance is None or session_instance.closed:
-        session_instance = aiohttp.ClientSession()
+        # Create session with SSL verification DISABLED for reliability on old edu portals
+        conn = aiohttp.TCPConnector(ssl=False)
+        session_instance = aiohttp.ClientSession(connector=conn)
     return session_instance
 
 async def get_direct_pdf_link(session, title: str, url: str) -> dict:
     """Try to find a direct PDF link with a 12s timeout."""
     if url.lower().endswith(".pdf"): return {"title": title, "url": url}
     try:
-        # Improved headers for better detection
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -165,7 +166,6 @@ async def get_direct_pdf_link(session, title: str, url: str) -> dict:
                 ctype = response.headers.get("Content-Type", "").lower()
                 if "pdf" in ctype: return {"title": title, "url": url}
 
-                # 2. Handle common PDF viewer redirects
                 if "google.com/viewer" in url or "docs.google.com/viewer" in url:
                     parsed = urllib.parse.urlparse(url)
                     qs = urllib.parse.parse_qs(parsed.query)
@@ -176,26 +176,19 @@ async def get_direct_pdf_link(session, title: str, url: str) -> dict:
 
                 html = await response.text()
                 soup = BeautifulSoup(html, 'html.parser')
-                
-                # Broaden the search for PDF candidates
                 candidates = []
                 for a in soup.find_all(['a', 'iframe'], href=True, src=True, limit=120):
                     link = a.get('href') or a.get('src')
                     if not link: continue
                     full_url = urllib.parse.urljoin(url, link)
-                    
-                    # Score the link
                     score = 0
                     if full_url.lower().endswith(".pdf"): score += 10
                     if "pdf" in full_url.lower(): score += 5
                     if "download" in full_url.lower(): score += 3
                     if "paper" in full_url.lower(): score += 2
-                    
-                    if score > 0:
-                        candidates.append((score, full_url))
+                    if score > 0: candidates.append((score, full_url))
                 
                 if candidates:
-                    # Sort by score descending
                     candidates.sort(key=lambda x: x[0], reverse=True)
                     return {"title": title, "url": candidates[0][1]}
     except: pass
@@ -734,9 +727,10 @@ async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if idx < len(results):
         url = results[idx]['url']
-        wait_msg = await query.message.reply_text(f"⚡ **Checking link...**")
+        wait_msg = await query.message.reply_text(f"⚡ **Downloading PDF... Level {1} link hunt...**")
         success = await download_and_send_pdf(url, update, context)
-        await wait_msg.delete()
+        try: await wait_msg.delete()
+        except: pass
         
         if success == "large":
             await query.message.reply_text(
