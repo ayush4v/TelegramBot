@@ -83,7 +83,7 @@ YEARS = ["2024", "2023", "2022", "2021", "2020", "2019", "2018", "Older"]
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Shows main categories."""
     # VERSION IDENTIFICATION
-    version = "v6.3 Render Ultra"
+    version = "v6.5 Final Static"
     text = (
         f"👋 **Welcome to the Professional Exam Assistant Bot {version}**\n\n"
         "I can help you find and download Previous Year Question Papers (PYQs) for almost all major Indian exams.\n\n"
