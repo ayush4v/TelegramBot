@@ -4,4 +4,4 @@ requests
 aiohttp
 beautifulsoup4
 httpx
-tornado
+duckduckgo_search>=7.0

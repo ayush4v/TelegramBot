@@ -18,6 +18,7 @@ from telegram.ext import (
 from bs4 import BeautifulSoup
 import urllib.parse
 from aiohttp import web
+from duckduckgo_search import DDGS
 
 # Load variables from .env or .env.token
 if os.path.exists(".env"):
@@ -400,57 +401,48 @@ def get_static_results(query_text: str) -> List[dict]:
 
 async def search_papers(query_text: str, limit: int = 6) -> List[dict]:
     """
-    GUARANTEED SEARCH: Static DB (PRIMARY) -> DDGS Library -> Bing Scraper.
-    Static DB covers ALL exam categories — works 100% on Render cloud IPs.
+    GUARANTEED SEARCH:
+    Layer 1: duckduckgo_search library (works on Render cloud IPs!)
+    Layer 2: Bing HTML scraper (fallback)
     """
     results = []
     seen_urls = set()
+    junk = ["google.com/search", "youtube.com", "facebook.com", "twitter.com", "instagram.com", "quora.com"]
 
     def add_result(title, url):
-        junk = ["google.com/search", "youtube.com", "facebook.com", "twitter.com", "instagram.com"]
         if url and url.startswith("http") and url not in seen_urls and len(results) < limit:
             if not any(j in url for j in junk):
                 results.append({"title": (title or query_text)[:80], "url": url})
                 seen_urls.add(url)
 
-    # ─── LAYER 1: Static DB (ALWAYS first — no network needed) ───
-    logger.info(f"[SEARCH] Static DB lookup: {query_text}")
-    for item in get_static_results(query_text):
-        add_result(item['title'], item['url'])
-    logger.info(f"[SEARCH] Static DB: {len(results)} results")
+    # ─── LAYER 1: duckduckgo_search library (MOST RELIABLE on cloud!) ───
+    try:
+        logger.info(f"[SEARCH] DDGS library lookup: {query_text}")
+        ddg_query = f"{query_text} filetype:pdf OR site:examfare.com OR site:pyq.examgoal.com OR site:testbook.com"
+        loop = asyncio.get_event_loop()
+        ddg_raw = await loop.run_in_executor(
+            None,
+            lambda: list(DDGS().text(ddg_query, max_results=limit + 4))
+        )
+        for r in ddg_raw:
+            add_result(r.get('title', ''), r.get('href', '') or r.get('url', ''))
+        logger.info(f"[SEARCH] DDGS library: {len(results)} results")
+    except Exception as e:
+        logger.warning(f"[SEARCH] DDGS library failed: {e}")
 
-    # ─── LAYER 2: DDG HTML Scraper (Fallback - no extra libraries needed!) ───
+    # ─── LAYER 2: Bing HTML scraper (fallback) ───
     if len(results) < 2:
         try:
-            logger.info(f"[SEARCH] DDG HTML lookup: {query_text}")
-            async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as sess:
-                ddg_results = await search_ddg(sess, query_text, limit=8)
-                for r in ddg_results:
-                    add_result(r['title'], r['url'])
-            logger.info(f"[SEARCH] DDG HTML: {len(results)} results")
-        except Exception as e:
-            logger.warning(f"[SEARCH] DDG HTML failed: {e}")
-
-    # ─── LAYER 3: Bing HTML scraper (last resort) ───
-    if len(results) < 2:
-        try:
-            logger.info(f"[SEARCH] Bing scraper: {query_text}")
+            logger.info(f"[SEARCH] Bing scraper fallback: {query_text}")
             async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as sess:
                 bing_results = await search_bing(sess, query_text, limit=8)
                 for r in bing_results:
                     add_result(r['title'], r['url'])
-            logger.info(f"[SEARCH] Bing: {len(bing_results)} results")
+            logger.info(f"[SEARCH] Bing: {len(results)} results")
         except Exception as e:
             logger.warning(f"[SEARCH] Bing failed: {e}")
 
-    if results:
-        results = results[:limit]
-        async with aiohttp.ClientSession() as res_sess:
-            tasks = [get_direct_pdf_link(res_sess, r['title'], r['url']) for r in results]
-            final_res = await asyncio.gather(*tasks, return_exceptions=True)
-            return [r if (isinstance(r, dict) and r.get('url')) else orig for r, orig in zip(final_res, results)]
-
-    return []
+    return results[:limit]
 
 
 async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.DEFAULT_TYPE, depth: int = 0):
