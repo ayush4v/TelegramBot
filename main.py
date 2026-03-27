@@ -396,19 +396,7 @@ STATIC_DB: Dict[str, List[dict]] = {
 
 def get_static_results(query_text: str) -> List[dict]:
     """Find best static DB matches — tries longest keys first for specificity."""
-    q = query_text.lower().strip()
-    matched = []
-    seen = set()
-    # Try longest keys first so "jee mains 2024" matches before "jee mains"
-    for key in sorted(STATIC_DB.keys(), key=len, reverse=True):
-        if key in q:
-            for item in STATIC_DB[key]:
-                if item['url'] not in seen:
-                    matched.append(item)
-                    seen.add(item['url'])
-            if len(matched) >= 4:
-                break
-    return matched[:6]
+    return []
 
 async def search_papers(query_text: str, limit: int = 6) -> List[dict]:
     """
@@ -623,24 +611,17 @@ async def year_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     base_key = EXAM_TO_KEY.get(exam_name, exam_name.lower())
 
+    # Disable static DB entirely to prevent 404s
     # Try year-specific key first, then fall back to base key
-    if year != "Older":
-        year_key = f"{base_key} {year}"
-        for item in STATIC_DB.get(year_key, []):
-            add(item['title'], item['url'])
+    results = []
 
-    # Always also add base key results (all-year archive)
-    for item in STATIC_DB.get(base_key, []):
-        add(item['title'], item['url'])
-
-    # If somehow static DB has no entry, fall back to search
-    if not results:
-        category_exams = EXAM_CATEGORIES.get(cat_name, {})
-        base_query = category_exams.get(exam_name, f"{exam_name} Previous Year Question Paper")
-        year_str = "" if year == "Older" else year
-        final_query = f"{exam_name} {year_str} question paper".strip()
-        logger.info(f"[YEAR_HANDLER] Static miss for {exam_name}, falling back to search: {final_query}")
-        results = await search_papers(final_query)
+    # All static DB missed, falling back to search
+    category_exams = EXAM_CATEGORIES.get(cat_name, {})
+    base_query = category_exams.get(exam_name, f"{exam_name} Previous Year Question Paper")
+    year_str = "" if year == "Older" else year
+    final_query = f"{exam_name} {year_str} question paper pdf".strip()
+    logger.info(f"[YEAR_HANDLER] Searching live for: {final_query}")
+    results = await search_papers(final_query)
 
     if not results:
         await query.edit_message_text(
