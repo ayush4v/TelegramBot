@@ -817,10 +817,29 @@ def main():
     
     def run_render_keep_alive():
         from http.server import HTTPServer, BaseHTTPRequestHandler
+        import urllib.request
+        import time
+        import threading
+        
         class HealthCheck(BaseHTTPRequestHandler):
             def do_GET(self):
                 self.send_response(200); self.end_headers()
                 self.wfile.write(b"Bot is online (Render Health Check OK)")
+        
+        def ping_self():
+            url = os.environ.get("RENDER_EXTERNAL_URL")
+            if not url: return
+            while True:
+                time.sleep(600)  # Ping every 10 minutes
+                try:
+                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                    urllib.request.urlopen(req)
+                    logger.info("📡 Self-ping successful! Render sleep prevented.")
+                except Exception as e:
+                    logger.warning(f"⚠️ Self-ping failed: {e}")
+
+        threading.Thread(target=ping_self, daemon=True).start()
+
         try:
             httpd = HTTPServer(('0.0.0.0', PORT), HealthCheck)
             logger.info(f"✅ Render Health-Check Server listening on port {PORT}")
