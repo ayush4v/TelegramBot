@@ -823,10 +823,20 @@ async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         report.append(f"❌ Static DB: {str(e)[:60]}")
 
-        logger.error("❌ ERROR: TELEGRAM_BOT_TOKEN is missing! Please set it in Render Dashboard.")
+    full_report = "\n".join(report)
+    await msg.edit_text(full_report, parse_mode="Markdown")
+
+def main():
+    logger.info("🚀 Starting Bot Application v11.0 LIVE Premium (Cloud Ready)...")
+    
+    # 🌟 CLOUD HEALTH-CHECK HACK (CRITICAL)
+    # Hugging Face Spaces look for port 7860 to show the bot as "Running".
+    PORT = int(os.environ.get("PORT", "7860"))
+    if not BOT_TOKEN:
+        logger.error("❌ ERROR: TELEGRAM_BOT_TOKEN is missing! Please set it in Settings -> Secrets.")
         raise ValueError("TELEGRAM_BOT_TOKEN is not set.")
     
-    def run_render_keep_alive():
+    def run_cloud_keep_alive():
         from http.server import HTTPServer, BaseHTTPRequestHandler
         import time
         import threading
@@ -837,47 +847,24 @@ async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 self.send_response(200)
                 self.send_header("Content-type", "text/plain")
                 self.end_headers()
-                self.wfile.write(b"Bot is online (Render Health Check OK)")
+                self.wfile.write(b"Bot is online (Cloud Health Check OK)")
             
             def log_message(self, format, *args):
-                pass # Suppress logs to keep it clean
-
-        def ping_self():
-            time.sleep(30)
-            url = os.environ.get("RENDER_EXTERNAL_URL")
-            if not url:
-                logger.info("📡 RENDER_EXTERNAL_URL not set. Skipping self-ping.")
-                return
-            
-            logger.info(f"📡 Self-ping enabled: {url}")
-            while True:
-                try:
-                    requests.get(url, timeout=10)
-                except Exception as e:
-                    logger.warning(f"📡 Self-ping issue: {e}")
-                time.sleep(600) 
-
-        threading.Thread(target=ping_self, daemon=True).start()
+                pass 
 
         try:
             httpd = HTTPServer(('0.0.0.0', PORT), HealthCheck)
-            logger.info(f"✅ Render Health Server listening on port {PORT}")
+            logger.info(f"✅ Cloud Health Server listening on port {PORT}")
             httpd.serve_forever()
         except Exception as e:
             logger.error(f"❌ Health-Check Server error: {e}")
 
     # Launch health check in background thread
     import threading
-    threading.Thread(target=run_render_keep_alive, daemon=True).start()
-
-    # Webhook vs Polling configuration
-    WEBHOOK_URL = os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("WEBHOOK_URL")
-
-    async def post_init(application):
-        logger.info("✅ Bot post-init successful.")
+    threading.Thread(target=run_cloud_keep_alive, daemon=True).start()
 
     # Build bot application
-    application = ApplicationBuilder().token(BOT_TOKEN).post_init(post_init).build()
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
 
     # Register handlers
     application.add_handler(CommandHandler("start", start))
@@ -892,14 +879,11 @@ async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 
     # START THE BOT
-    if WEBHOOK_URL:
-        # Note: We bind to PORT 10000 in a separate thread to satisfy Render's health check.
-        # This allows us to use stable Polling even on a cloud platform (most reliable).
-        logger.info(f"📡 PRODUCTION: Using Stable Polling (Health server on port {PORT})")
-        application.run_polling()
-    else:
-        logger.info("📡 LOCAL: Starting Polling")
-        application.run_polling()
+    logger.info(f"📡 PRODUCTION: Using Stable Polling (Health server on port {PORT})")
+    application.run_polling()
+
+if __name__ == "__main__":
+    main()
 
 if __name__ == "__main__":
     main()
