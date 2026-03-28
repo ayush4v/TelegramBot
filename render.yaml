@@ -1,0 +1,19 @@
+# Render Blueprint for Telegram Exam Bot
+services:
+  - type: web
+    name: exam-assistant-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: PYTHON_VERSION
+        value: 3.11.8
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: RENDER_EXTERNAL_URL
+        fromService:
+          name: exam-assistant-bot
+          type: web
+          property: host

@@ -4,4 +4,5 @@ requests
 aiohttp
 beautifulsoup4
 httpx
-duckduckgo_search>=7.0
+duckduckgo_search>=7.5
+primp>=0.6

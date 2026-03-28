@@ -45,6 +45,8 @@ EXAM_CATEGORIES = {
         "GATE": "GATE Previous Year Question Paper",
         "BITSAT": "BITSAT Exam Question Paper",
         "WBJEE": "WBJEE Previous Year Paper",
+        "WBJEE JELET": "WBJEE JELET Previous Year Question Paper",
+        "WBJEE JENPAS": "WBJEE JENPAS UG Question Paper",
         "MHT CET": "MHT CET Exam Result Question Paper",
     },
     "🩺 Medical": {
@@ -76,6 +78,7 @@ EXAM_CATEGORIES = {
         "CLAT": "CLAT Law Entrance Question Paper",
         "NIFT": "NIFT Design Entrance Paper",
         "CUET": "CUET UG PG Exam Question Paper",
+        "DU LLB": "DU LLB Entrance Exam Question Paper",
     }
 }
 
@@ -84,11 +87,12 @@ YEARS = ["2024", "2023", "2022", "2021", "2020", "2019", "2018", "Older"]
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Shows main categories."""
     # VERSION IDENTIFICATION
-    version = "v9.5 PRO Ready"
+    version = "v11.0 LIVE Premium"
     text = (
-        f"👋 **Welcome to the Professional Exam Assistant Bot {version}**\n\n"
-        "I can help you find and download Previous Year Question Papers (PYQs) for almost all major Indian exams.\n\n"
-        "Please select an **Exam Category** below to get started:"
+        f"👋 **Welcome to the One-Click Exam Paper Bot {version}**\n\n"
+        "I provide **Direct PDF Downloads** for all major Indian exams (JEE, NEET, SSC, UPSC, CBSE, etc.) directly in this chat.\n\n"
+        "❌ **No more annoying links or redirects!**\n\n"
+        "Please select a **Category** below to receive your paper instantly:"
     )
     keyboard = []
     categories = list(EXAM_CATEGORIES.keys())
@@ -149,51 +153,14 @@ session_instance: aiohttp.ClientSession = None
 async def get_session():
     global session_instance
     if session_instance is None or session_instance.closed:
-        # Create session with SSL verification DISABLED for reliability on old edu portals
+        # Create session with SSL verification DISABLED and CookieJar enabled
+        # This is essential for sites that use landing pages to set session cookies
         conn = aiohttp.TCPConnector(ssl=False)
-        session_instance = aiohttp.ClientSession(connector=conn)
+        jar = aiohttp.CookieJar(unsafe=True)
+        timeout = aiohttp.ClientTimeout(total=60, connect=10, sock_read=30)
+        session_instance = aiohttp.ClientSession(connector=conn, cookie_jar=jar, timeout=timeout)
     return session_instance
 
-async def get_direct_pdf_link(session, title: str, url: str) -> dict:
-    """Try to find a direct PDF link with a 12s timeout."""
-    if url.lower().endswith(".pdf"): return {"title": title, "url": url}
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        }
-        async with session.get(url, timeout=12.0, headers=headers) as response:
-            if response.status == 200:
-                ctype = response.headers.get("Content-Type", "").lower()
-                if "pdf" in ctype: return {"title": title, "url": url}
-
-                if "google.com/viewer" in url or "docs.google.com/viewer" in url:
-                    parsed = urllib.parse.urlparse(url)
-                    qs = urllib.parse.parse_qs(parsed.query)
-                    if 'url' in qs:
-                        pdf_url = qs['url'][0]
-                        if not pdf_url.startswith("http"): pdf_url = "https://" + pdf_url
-                        return {"title": title, "url": pdf_url}
-
-                html = await response.text()
-                soup = BeautifulSoup(html, 'html.parser')
-                candidates = []
-                for a in soup.find_all(['a', 'iframe'], href=True, src=True, limit=120):
-                    link = a.get('href') or a.get('src')
-                    if not link: continue
-                    full_url = urllib.parse.urljoin(url, link)
-                    score = 0
-                    if full_url.lower().endswith(".pdf"): score += 10
-                    if "pdf" in full_url.lower(): score += 5
-                    if "download" in full_url.lower(): score += 3
-                    if "paper" in full_url.lower(): score += 2
-                    if score > 0: candidates.append((score, full_url))
-                
-                if candidates:
-                    candidates.sort(key=lambda x: x[0], reverse=True)
-                    return {"title": title, "url": candidates[0][1]}
-    except: pass
-    return None
 
 # Rotating User-Agents to avoid detection on cloud IPs
 USER_AGENTS = [
@@ -319,6 +286,9 @@ STATIC_DB: Dict[str, List[dict]] = {
     "bitsat": [{"title": "BITSAT Papers - AglaSem", "url": "https://schools.aglasem.com/tag/bitsat-question-papers/"}],
     # WBJEE
     "wbjee": [{"title": "WBJEE Papers - AglaSem", "url": "https://schools.aglasem.com/tag/wbjee-question-papers/"}],
+    "wbjee jelet": [{"title": "WBJEE JELET Papers - AglaSem", "url": "https://schools.aglasem.com/tag/wbjee-jelet-question-papers/"},
+                    {"title": "JELET Previous Papers - Examfare", "url": "http://www.examfare.com/p/jelet-previous-year-question-paper.html"}],
+    "wbjee jenpas": [{"title": "WBJEE JENPAS Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jenpas-ug-question-papers/"}],
     # MHT CET
     "mht cet": [{"title": "MHT CET Papers - AglaSem", "url": "https://schools.aglasem.com/tag/mht-cet-question-papers/"}],
     # UPSC CSE
@@ -396,7 +366,12 @@ STATIC_DB: Dict[str, List[dict]] = {
 }
 
 def get_static_results(query_text: str) -> List[dict]:
-    """Find best static DB matches — tries longest keys first for specificity."""
+    """Efficiently find best static DB matches – tries specific keys first."""
+    q = query_text.lower()
+    # Prioritize year-specific matches
+    for key, data in STATIC_DB.items():
+        if key in q:
+            return data
     return []
 
 async def search_papers(query_text: str, limit: int = 6) -> List[dict]:
@@ -418,7 +393,7 @@ async def search_papers(query_text: str, limit: int = 6) -> List[dict]:
     # ─── LAYER 1: duckduckgo_search library (MOST RELIABLE on cloud!) ───
     try:
         logger.info(f"[SEARCH] DDGS library lookup: {query_text}")
-        ddg_query = f"{query_text} filetype:pdf OR site:examfare.com OR site:pyq.examgoal.com OR site:testbook.com"
+        ddg_query = f"{query_text} filetype:pdf OR site:examfare.com OR site:pyq.examgoal.com OR site:aglasem.com OR site:shaalaa.com"
         loop = asyncio.get_event_loop()
         ddg_raw = await loop.run_in_executor(
             None,
@@ -445,110 +420,129 @@ async def search_papers(query_text: str, limit: int = 6) -> List[dict]:
     return results[:limit]
 
 
-async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.DEFAULT_TYPE, depth: int = 0):
+async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.DEFAULT_TYPE, depth: int = 0, status_msg=None):
     """Ultra-Reliable PDF delivery with deep link hunting (Up to 2 levels)."""
-    if depth > 2: return False # Deep enough to handle most "Click -> Button -> PDF" sites
+    if depth > 2: return "failed"
     
     try:
         session = await get_session()
-        # High-Quality Headers (mimics a real Chrome browser on Windows)
+        # Quality Headers
         headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "User-Agent": random.choice(USER_AGENTS),
             "Referer": url if depth > 0 else "https://www.google.com/",
             "Accept-Language": "en-IN,en-US;q=0.9,en;q=0.8",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/pdf,*/*;q=0.8",
             "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1"
+            "Upgrade-Insecure-Requests": "1",
         }
         
-        # Extended timeout (45s) for slow educational portals
-        async with session.get(url, timeout=45, headers=headers, allow_redirects=True) as response:
-            if response.status == 200:
-                ctype = response.headers.get("Content-Type", "").lower()
+        # 0. Early Exit for Google Drive / Docs - Redirect to download link
+        if ("drive.google.com" in url or "docs.google.com" in url):
+            if "/d/" in url:
+                try:
+                    file_id = url.split("/d/")[1].split("/")[0].split("?")[0]
+                    url = f"https://drive.google.com/uc?export=download&id={file_id}"
+                    logger.info(f"🔄 Transformed Google Drive link: {url}")
+                except: pass
+            elif "viewer?url=" in url:
+                try:
+                    parsed = urllib.parse.urlparse(url)
+                    qs = urllib.parse.parse_qs(parsed.query)
+                    if 'url' in qs:
+                        url = qs['url'][0]
+                        if not url.startswith("http"): url = "https://" + url
+                        logger.info(f"🔄 Extracted link from Google Viewer: {url}")
+                except: pass
+
+        # 0b. Handle Search Redirects (e.g. google.com/url?q=...)
+        if "google.com/url" in url:
+            try:
+                parsed = urllib.parse.urlparse(url)
+                qs = urllib.parse.parse_qs(parsed.query)
+                if 'q' in qs:
+                    url = qs['q'][0]
+                    logger.info(f"🔄 Resolved Google redirect: {url}")
+            except: pass
+        
+        # 0c. AglaSem / Site Specific Headers
+        if "aglasem.com" in url:
+             headers["Referer"] = "https://schools.aglasem.com/"
+             
+        # Update status if possible
+        if status_msg:
+            try: 
+                indicator = "🚀 Direct Search..." if depth == 0 else f"🔍 Depth {depth}: Hunting PDF..."
+                await status_msg.edit_text(f"⚡ **{indicator}**\n*Trying:* `{urllib.parse.urlparse(url).netloc[:30]}`", parse_mode="Markdown")
+            except: pass
+
+        async with session.get(url, timeout=35, headers=headers, allow_redirects=True) as response:
+            if response.status != 200: return "failed"
+            ctype = response.headers.get("Content-Type", "").lower()
+            
+            # 1. Direct PDF Check
+            content_preview = await response.content.read(8192)
+            is_pdf = content_preview.startswith(b"%PDF-") or "pdf" in ctype
+            
+            if is_pdf:
+                full_content = content_preview
+                async for chunk in response.content.iter_chunked(1024 * 1024):
+                    full_content += chunk
+                    if len(full_content) > 49 * 1024 * 1024: return "large"
                 
-                # Check for PDF magic bytes (streaming read)
-                content_preview = await response.content.read(2048)
-                is_pdf = content_preview.startswith(b"%PDF-") or "pdf" in ctype
+                fname = "paper.pdf"
+                cd = response.headers.get("Content-Disposition", "")
+                if 'filename=' in cd: fname = cd.split('filename=')[1].strip('"').strip("'")
+                else:
+                    parts = url.split("/")[-1].split("?")[0]
+                    if parts.lower().endswith(".pdf"): fname = parts
+                    elif len(parts) > 3: fname = f"{parts}.pdf"
                 
-                if is_pdf:
-                    # Read the rest of the content
-                    full_content = content_preview + (await response.content.read())
-                    if len(full_content) < 48 * 1024 * 1024:
-                        cd = response.headers.get("Content-Disposition", "")
-                        fname = "exam_paper.pdf"
-                        if 'filename=' in cd:
-                            fname = cd.split('filename=')[1].strip('"').strip("'")
-                        else:
-                            # Heuristic: extract from URL
-                            parts = url.split("/")[-1].split("?")[0]
-                            if parts.lower().endswith(".pdf"): fname = parts
-                            else: fname = f"{parts}.pdf" if parts else "paper.pdf"
-                        
-                        msg = update.callback_query.message if update.callback_query else update.message
-                        await msg.reply_document(
-                            document=io.BytesIO(full_content),
-                            filename=fname,
-                            caption=f"✅ **Sent Successfully!**\n🔗 *Fast Direct Download*"
-                        )
-                        return True
-                    else: return "large"
+                msg = update.callback_query.message if update.callback_query else update.message
+                await msg.reply_document(
+                    document=io.BytesIO(full_content), filename=fname,
+                    caption=f"✅ **Sent Successfully!**\n🔗 *Fast One-Click Delivery*"
+                )
+                return "sent"
 
-                # 2. Page Parsing & Landing Page Handling
-                if "html" in ctype:
-                    # Read HTML (don't miss anything)
-                    html = content_preview + (await response.content.read())
-                    soup = BeautifulSoup(html, 'html.parser')
-                    candidates = []
+            # 2. HTML Link Hunting
+            if "html" in ctype:
+                html = content_preview + (await response.content.read())
+                soup = BeautifulSoup(html, 'html.parser')
+                candidates = []
+                for tag in soup.find_all(['a', 'iframe', 'button', 'embed', 'object']):
+                    link = tag.get('href') or tag.get('src') or tag.get('data-url') or tag.get('data-link')
+                    if not link or len(link) < 5 or link.startswith('#') or link.startswith('javascript:'): continue
                     
-                    # Look for hidden links and "Download" buttons
-                    for tag in soup.find_all(['a', 'iframe', 'button', 'embed', 'object']):
-                        link = tag.get('href') or tag.get('src') or tag.get('data-url') or tag.get('data-link')
-                        if not link or link.startswith('#') or link.startswith('javascript:'): continue
-                        
-                        full_link = urllib.parse.urljoin(url, link)
-                        text = tag.get_text().strip().lower()
-                        
-                        score = 0
-                        # Boost score based on URL and text indicators
-                        if full_link.lower().endswith(".pdf"): score += 20
-                        if "pdf" in full_link.lower(): score += 10
-                        if "download" in full_link.lower(): score += 5
-                        if "paper" in full_link.lower(): score += 3
-                        
-                        # Platform boosts (Trusted PYQ sources)
-                        trusted_sites = ["aglasem", "byjus", "careers360", "collegedunia", "shiksha", "vedantu", "sarkariexam", "sarkariresult"]
-                        if any(site in full_link.lower() for site in trusted_sites):
-                            score += 15
-                        
-                        # Text triggers
-                        if "download" in text and ("pdf" in text or "paper" in text): score += 12
-                        if "click" in text and "here" in text: score += 5
-                        if "direct" in text: score += 5
-                        if "official" in text: score += 3
-                        if "solution" in text: score += 4
+                    full_link = urllib.parse.urljoin(url, link)
+                    text = tag.get_text().strip().lower()
+                    
+                    score = 0
+                    if full_link.lower().endswith(".pdf"): score += 100
+                    if "pdf" in full_link.lower(): score += 40
+                    if "drive.google.com" in full_link.lower(): score += 50
+                    if "download" in full_link.lower(): score += 10
+                    if "download" in text and ("pdf" in text or "paper" in text): score += 60
+                    if tag.name == "iframe" and "viewer" in full_link.lower(): score += 70
+                    
+                    if score > 0 and not any(x in full_link.lower() for x in ["facebook", "twitter", "whatsapp", "telegram"]):
+                        candidates.append((score, full_link))
 
-                        # Filter out common garbage
-                        if score > 0 and not any(x in full_link.lower() for x in ["social", "login", "signup", "contact", "about", "register", "policy"]):
-                            candidates.append((score, full_link))
-
-                    # Deduplicate and sort
-                    seen = set()
-                    unique_candidates = []
-                    for s, l in candidates:
-                        if l not in seen:
-                            unique_candidates.append((s, l))
-                            seen.add(l)
-                    
-                    unique_candidates.sort(key=lambda x: x[0], reverse=True)
-                    
-                    # Try top 6 candidates (higher depth allows more exploration)
-                    for _, cand in unique_candidates[:7]:
-                        logger.info(f"Depth {depth} -> Hunting PDF at: {cand}")
-                        if await download_and_send_pdf(cand, update, context, depth + 1):
-                            return True
+                unique_cands = []
+                seen = set()
+                for s, l in sorted(candidates, key=lambda x: x[0], reverse=True):
+                    if l not in seen:
+                        unique_cands.append((s, l))
+                        seen.add(l)
+                
+                max_cands = 10 if depth == 0 else 3
+                for _, cand in unique_cands[:max_cands]:
+                    res = await download_and_send_pdf(cand, update, context, depth + 1, status_msg)
+                    if res != "failed": return res
     except Exception as e:
-        logger.error(f"Reliability Error at {url}: {e}")
-    return False
+        logger.error(f"Download Error at depth {depth} ({url}): {e}")
+    return "failed"
+
+
 
 async def year_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Result renderer — uses Static DB directly for guaranteed results."""
@@ -568,6 +562,8 @@ async def year_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "GATE":           "gate",
         "BITSAT":         "bitsat",
         "WBJEE":          "wbjee",
+        "WBJEE JELET":    "wbjee jelet",
+        "WBJEE JENPAS":   "wbjee jenpas",
         "MHT CET":        "mht cet",
         "NEET UG":        "neet ug",
         "NEET PG":        "neet pg",
@@ -602,34 +598,66 @@ async def year_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             seen_urls.add(url)
 
     base_key = EXAM_TO_KEY.get(exam_name, exam_name.lower())
+    year_key = f"{base_key} {year}".lower().strip()
+    
+    # 1. Try Specific year match first
+    results_static = STATIC_DB.get(year_key, [])
+    if not results_static:
+        # 2. Try general exam match
+        results_static = STATIC_DB.get(base_key, [])
+    
+    for res in results_static:
+        add(res['title'], res['url'])
 
-    # Disable static DB entirely to prevent 404s
-    # Try year-specific key first, then fall back to base key
-    results = []
-
-    # All static DB missed, falling back to search
-    category_exams = EXAM_CATEGORIES.get(cat_name, {})
-    base_query = category_exams.get(exam_name, f"{exam_name} Previous Year Question Paper")
-    year_str = "" if year == "Older" else year
-    final_query = f"{exam_name} {year_str} question paper pdf".strip()
-    logger.info(f"[YEAR_HANDLER] Searching live for: {final_query}")
-    results = await search_papers(final_query)
+    # 3. IF NO STATIC DB MATCH, OR FOR "OLDER" PAPERS, FALLBACK TO SEARCH
+    if not results or year == "Older" or len(results) < 2:
+        category_exams = EXAM_CATEGORIES.get(cat_name, {})
+        base_query = category_exams.get(exam_name, f"{exam_name} Previous Year Paper")
+        year_str = "" if year == "Older" else year
+        final_query = f"{exam_name} {year_str} question paper pdf".strip()
+        live_res = await search_papers(final_query, limit=5-len(results))
+        for r in live_res:
+            add(r['title'], r['url'])
 
     if not results:
         await query.edit_message_text(
-            f"❌ **No results found for {exam_name} ({year}).**\n\nPlease try another year.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data=f"exam_{cat_name}_{exam_name}")]]))
+            f"❌ **No results found for {exam_name} ({year}).**\n\nTry another year or browse /start.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back Selection", callback_data=f"exam_{cat_name}_{exam_name}")]]))
         return
 
-    response = f"📚 **Top Results ({year}):**\n\n"
+    # ────── ONE-CLICK DIRECT DOWNLOAD EXPERIENCE ──────
+    context.user_data['last_results'] = results
+    
+    wait_msg = await query.edit_message_text(
+        f"🎯 **Year: {year} | Exam: {exam_name}**\n\n"
+        f"🚀 **Starting One-Click Direct Download...**\n"
+        f"Please wait while I fetch the best PDF for you.",
+        parse_mode="Markdown"
+    )
+
+    # Automatically attempt download of top result
+    status = await download_and_send_pdf(results[0]['url'], update, context, 0, wait_msg)
+    
+    if status == "sent":
+        response = f"✅ **PDF Sent!**\n\nI found the best match for **{exam_name} ({year})** and delivered it above.\n\nNeed more versions or different shifts?"
+        keyboard = []
+        for i, res in enumerate(results):
+            keyboard.append([InlineKeyboardButton(f"📥 Version {i+1}", callback_data=f"dl_{i}")])
+        keyboard.append([InlineKeyboardButton("🔙 Back to years", callback_data=f"exam_{cat_name}_{exam_name}")])
+        try: await wait_msg.edit_text(response, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        except: pass
+        return
+
+    # Fallback if auto-download failed
+    response = f"📚 **{exam_name} Results ({year}):**\n\n"
+    response += "⚠️ *Auto-download failed. Please try these links:* \n\n"
     keyboard = []
     for i, res in enumerate(results):
-        response += f"📄 {i+1}. [{res['title']}]({res['url']})\n\n"
-        keyboard.append([InlineKeyboardButton(f"🚀 Download {i+1}", callback_data=f"dl_{i}")])
+        response += f"📄 {i+1}. **{res['title']}**\n"
+        keyboard.append([InlineKeyboardButton(f"📥 Download PDF {i+1}", callback_data=f"dl_{i}")])
     
-    context.user_data['last_results'] = results
-    keyboard.append([InlineKeyboardButton("🔙 Back to Year Selection", callback_data=f"exam_{cat_name}_{exam_name}")])
-    await query.edit_message_text(response, parse_mode="Markdown", disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(keyboard))
+    keyboard.append([InlineKeyboardButton("🔙 Back to years", callback_data=f"exam_{cat_name}_{exam_name}")])
+    await wait_msg.edit_text(response, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def direct_search_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Explains how to use direct search when the button is clicked."""
@@ -678,49 +706,70 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_msg.edit_text("❌ **No results found.** Please use the /start menu to browse categorized exams.")
         return
 
+    # Hide raw URLs for a cleaner experience
     response = f"📚 **Search Results for: {query_text}**\n\n"
     keyboard = []
     for i, res in enumerate(results):
-        response += f"📄 {i+1}. [{res['title']}]({res['url']})\n\n"
-        keyboard.append([InlineKeyboardButton(f"🚀 Download PDF {i+1}", callback_data=f"dl_{i}")])
+        response += f"📄 {i+1}. **{res['title']}**\n"
+        keyboard.append([InlineKeyboardButton(f"📥 One-Click Download {i+1}", callback_data=f"dl_{i}")])
     
     context.user_data['last_results'] = results
-    await status_msg.edit_text(response, parse_mode="Markdown", disable_web_page_preview=True, reply_markup=InlineKeyboardMarkup(keyboard))
+    await status_msg.edit_text(response, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Refined download handler with informative errors."""
     query = update.callback_query
     await query.answer("Preparing download...")
-    idx = int(query.data.split("_")[1])
     
-    # Send 'upload_document' action to show progress
-    await context.bot.send_chat_action(chat_id=query.message.chat_id, action="upload_document")
-    
-    results = context.user_data.get('last_results', [])
-    
-    if idx < len(results):
-        url = results[idx]['url']
-        wait_msg = await query.message.reply_text(f"⚡ **Downloading PDF... Level {1} link hunt...**")
-        success = await download_and_send_pdf(url, update, context)
-        try: await wait_msg.delete()
-        except: pass
+    try:
+        parts = query.data.split("_")
+        if len(parts) < 2: return
+        idx = int(parts[1])
         
-        if success == "large":
-            await query.message.reply_text(
-                f"📂 **File is too large!**\n\n"
-                f"The PDF is larger than 50MB, which is the limit for Telegram bots. "
-                f"Please download it manually using the link below:\n\n"
-                f"🔗 **[Download Large Paper]({url})**",
-                parse_mode="Markdown"
-            )
-        elif not success:
-            await query.message.reply_text(
-                f"⚠️ **Note:** Direct PDF delivery failed for this link.\n\n"
-                f"This usually happens when the website has strict bot protection or requires manual verification.\n\n"
-                f"🔗 **[Click here to open the paper in browser]({url})**",
-                parse_mode="Markdown",
-                disable_web_page_preview=False
-            )
+        results = context.user_data.get('last_results', [])
+        
+        if not results:
+            await query.message.reply_text("❌ **Session Expired!**\n\nPlease search for the exam again. Results are only kept for a short time for security.")
+            return
+
+        if idx < len(results):
+            url = results[idx]['url']
+            title = results[idx]['title']
+            
+            # Show progress
+            await context.bot.send_chat_action(chat_id=query.message.chat_id, action="upload_document")
+            wait_msg = await query.message.reply_text(f"⚡ **Searching for direct PDF for:**\n*{title}*\n\n*This may take a few seconds...*", parse_mode="Markdown")
+            
+            # Run extraction
+            status = await download_and_send_pdf(url, update, context, 0, wait_msg)
+            
+            # Cleanup wait message
+            try: await wait_msg.delete()
+            except: pass
+            
+            if status == "large":
+                await query.message.reply_text(
+                    f"📂 **File is too large!**\n\n"
+                    f"The PDF is larger than 50MB, which is the limit for Telegram bots.\n"
+                    f"Please download it manually using the link below:\n\n"
+                    f"🔗 **[Download Large Paper]({url})**",
+                    parse_mode="Markdown"
+                )
+            elif status == "failed":
+                await query.message.reply_text(
+                    f"⚠️ **Note:** Direct PDF delivery failed for this link.\n\n"
+                    f"This site might have bot protection or requires manual captcha.\n\n"
+                    f"🔗 **[Click here to open the paper in browser]({url})**",
+                    parse_mode="Markdown",
+                    disable_web_page_preview=False
+                )
+        else:
+            await query.message.reply_text("❌ **Invalid selection.** Please try searching again.")
+            
+    except Exception as e:
+        logger.error(f"Error in download_callback: {e}")
+        await query.message.reply_text("❌ **An unexpected error occurred.** Please try again /start.")
+
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_msg = (
@@ -774,53 +823,50 @@ async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         report.append(f"❌ Static DB: {str(e)[:60]}")
 
-    full_report = "\n".join(report)
-    await msg.edit_text(full_report, parse_mode="Markdown")
-
-def main():
-    if not BOT_TOKEN:
-        logger.error("❌ ERROR: TELEGRAM_BOT_TOKEN is missing!")
+        logger.error("❌ ERROR: TELEGRAM_BOT_TOKEN is missing! Please set it in Render Dashboard.")
         raise ValueError("TELEGRAM_BOT_TOKEN is not set.")
-
-    logger.info("🚀 Starting Bot Application v6.8...")
-    
-    # 🌟 RENDER HEALTH-CHECK HACK (CRITICAL)
-    # This binds the port IMMEDIATELY in a separate thread so Render never times out.
-    PORT = int(os.environ.get("PORT", "10000"))
     
     def run_render_keep_alive():
         from http.server import HTTPServer, BaseHTTPRequestHandler
-        import urllib.request
         import time
         import threading
+        import requests 
         
         class HealthCheck(BaseHTTPRequestHandler):
             def do_GET(self):
-                self.send_response(200); self.end_headers()
+                self.send_response(200)
+                self.send_header("Content-type", "text/plain")
+                self.end_headers()
                 self.wfile.write(b"Bot is online (Render Health Check OK)")
-        
+            
+            def log_message(self, format, *args):
+                pass # Suppress logs to keep it clean
+
         def ping_self():
+            time.sleep(30)
             url = os.environ.get("RENDER_EXTERNAL_URL")
-            if not url: return
+            if not url:
+                logger.info("📡 RENDER_EXTERNAL_URL not set. Skipping self-ping.")
+                return
+            
+            logger.info(f"📡 Self-ping enabled: {url}")
             while True:
-                time.sleep(600)  # Ping every 10 minutes
                 try:
-                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                    urllib.request.urlopen(req)
-                    logger.info("📡 Self-ping successful! Render sleep prevented.")
+                    requests.get(url, timeout=10)
                 except Exception as e:
-                    logger.warning(f"⚠️ Self-ping failed: {e}")
+                    logger.warning(f"📡 Self-ping issue: {e}")
+                time.sleep(600) 
 
         threading.Thread(target=ping_self, daemon=True).start()
 
         try:
             httpd = HTTPServer(('0.0.0.0', PORT), HealthCheck)
-            logger.info(f"✅ Render Health-Check Server listening on port {PORT}")
+            logger.info(f"✅ Render Health Server listening on port {PORT}")
             httpd.serve_forever()
         except Exception as e:
             logger.error(f"❌ Health-Check Server error: {e}")
 
-    # Launch health check in background thread so it doesn't block the bot
+    # Launch health check in background thread
     import threading
     threading.Thread(target=run_render_keep_alive, daemon=True).start()
 
@@ -847,12 +893,9 @@ def main():
 
     # START THE BOT
     if WEBHOOK_URL:
-        logger.info(f"📡 PRODUCTION: Setting Webhook on {WEBHOOK_URL}")
-        # Note: We bind to 0.0.0.0:PORT+1 for the webhook server if needed, 
-        # but since PTB run_webhook tries to bind the main PORT, and our 
-        # health server ALREADY has it, we just use Polling for the bot itself 
-        # while our health server satisfies Render. This is the MOST STABLE way.
-        logger.info("📡 Using Stable Polling (Health server satisfying Render PORT)")
+        # Note: We bind to PORT 10000 in a separate thread to satisfy Render's health check.
+        # This allows us to use stable Polling even on a cloud platform (most reliable).
+        logger.info(f"📡 PRODUCTION: Using Stable Polling (Health server on port {PORT})")
         application.run_polling()
     else:
         logger.info("📡 LOCAL: Starting Polling")
