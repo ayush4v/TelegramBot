@@ -39,7 +39,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Constants
-BOT_VERSION = "v12.2 Stable-Push"
+BOT_VERSION = "v12.3 Stable-Push"
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 logger.info(f"🛠 Loading ExamBot {BOT_VERSION}...")
 
@@ -1364,9 +1364,9 @@ def main():
     application.add_handler(CommandHandler("debug", debug_command))
     application.add_handler(CallbackQueryHandler(start, pattern="^back_cats$"))
     application.add_handler(CallbackQueryHandler(direct_search_callback, pattern="^direct_search$"))
-    application.add_handler(CallbackQueryHandler(category_handler, pattern="^cat_"))
-    application.add_handler(CallbackQueryHandler(exam_handler, pattern="^exam_"))
-    application.add_handler(CallbackQueryHandler(year_handler, pattern="^year_"))
+    application.add_handler(CallbackQueryHandler(category_handler, pattern="^cat"))
+    application.add_handler(CallbackQueryHandler(exam_handler, pattern="^exam"))
+    application.add_handler(CallbackQueryHandler(year_handler, pattern="^year"))
     application.add_handler(CallbackQueryHandler(download_callback, pattern="^dl_"))
     application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
 
