@@ -39,7 +39,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Constants
-BOT_VERSION = "v12.1 Stable-Push"
+BOT_VERSION = "v12.2 Stable-Push"
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 logger.info(f"🛠 Loading ExamBot {BOT_VERSION}...")
 
@@ -101,7 +101,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = []
     categories = list(EXAM_CATEGORIES.keys())
     for cat in categories:
-        keyboard.append([InlineKeyboardButton(cat, callback_data=f"cat_{cat}")])
+        keyboard.append([InlineKeyboardButton(cat, callback_data=f"cat|{cat}")])
     
     keyboard.append([InlineKeyboardButton("🔍 Direct Search (Type Any Exam)", callback_data="direct_search")])
     
@@ -115,9 +115,8 @@ async def category_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Shows exams in a category."""
     query = update.callback_query
     await query.answer()
-    # Handle both encoded (with underscores) and non-encoded cat names
-    cat_raw = query.data.replace("cat_", "")
-    cat_name = cat_raw.replace("_", " ")  # Decode underscores back to spaces
+    # Handle with pipes
+    cat_name = query.data.split("|")[1]
     exams = EXAM_CATEGORIES.get(cat_name, {})
     
     text = f"📂 **Category: {cat_name}**\n\nNow, select a specific **Exam** from the list below:"
@@ -125,11 +124,9 @@ async def category_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     exam_names = list(exams.keys())
     cat_key = cat_name.replace(" ", "_")
     for i in range(0, len(exam_names), 2):
-        exam_key_1 = exam_names[i].replace(" ", "_")
-        row = [InlineKeyboardButton(exam_names[i], callback_data=f"exam_{cat_key}_{exam_key_1}")]
+        row = [InlineKeyboardButton(exam_names[i], callback_data=f"exam|{cat_name}|{exam_names[i]}")]
         if i+1 < len(exam_names):
-            exam_key_2 = exam_names[i+1].replace(" ", "_")
-            row.append(InlineKeyboardButton(exam_names[i+1], callback_data=f"exam_{cat_key}_{exam_key_2}"))
+            row.append(InlineKeyboardButton(exam_names[i+1], callback_data=f"exam|{cat_name}|{exam_names[i+1]}"))
         keyboard.append(row)
     
     keyboard.append([InlineKeyboardButton("🔙 Back to Categories", callback_data="back_cats")])
@@ -140,22 +137,19 @@ async def exam_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Shows years for a specific exam."""
     query = update.callback_query
     await query.answer()
-    parts = query.data.split("_")
-    # cat_key is parts[1], exam_key is parts[2], both encoded with underscores
-    cat_key = parts[1]
-    exam_key = parts[2]
-    cat_name = cat_key.replace("_", " ")
-    exam_name = exam_key.replace("_", " ")
+    parts = query.data.split("|")
+    cat_name = parts[1]
+    exam_name = parts[2]
     
     text = f"🎯 **Selected Exam: {exam_name}**\n\nWhich **Academic Year** paper are you looking for?"
     keyboard = []
     for i in range(0, len(YEARS), 2):
-        row = [InlineKeyboardButton(YEARS[i], callback_data=f"year_{cat_key}_{exam_key}_{YEARS[i]}")]
+        row = [InlineKeyboardButton(YEARS[i], callback_data=f"year|{cat_name}|{exam_name}|{YEARS[i]}")]
         if i+1 < len(YEARS):
-            row.append(InlineKeyboardButton(YEARS[i+1], callback_data=f"year_{cat_key}_{exam_key}_{YEARS[i+1]}"))
+            row.append(InlineKeyboardButton(YEARS[i+1], callback_data=f"year|{cat_name}|{exam_name}|{YEARS[i+1]}"))
         keyboard.append(row)
     
-    keyboard.append([InlineKeyboardButton("🔙 Back to Exams", callback_data=f"cat_{cat_key}")])
+    keyboard.append([InlineKeyboardButton("🔙 Back to Exams", callback_data=f"cat|{cat_name}")])
     
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
@@ -998,12 +992,10 @@ async def year_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Result renderer — uses Static DB directly for guaranteed results."""
     query = update.callback_query
     await query.answer("Fetching results...")
-    parts = query.data.split("_")
-    cat_key = parts[1]
-    exam_key = parts[2]
+    parts = query.data.split("|")
+    cat_name = parts[1]
+    exam_name = parts[2]
     year = parts[3]
-    cat_name = cat_key.replace("_", " ")
-    exam_name = exam_key.replace("_", " ")
 
     await query.edit_message_text(f"⚡ **Searching {exam_name} ({year})...**", parse_mode="Markdown")
     await context.bot.send_chat_action(chat_id=query.message.chat_id, action="typing")
@@ -1077,7 +1069,7 @@ async def year_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         report = f"❌ **No results found for {exam_name} ({year}).**"
         if search_stats: report += f"\n\n🔎 Diagnostics: `{search_stats}`"
         await query.edit_message_text(report + footer, parse_mode="Markdown", 
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data=f"exam_{cat_key}_{exam_key}")]]))
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data=f"exam|{cat_name}|{exam_name}")]]))
         return
 
     # ────── ONE-CLICK AUTOMATED DOWNLOAD PROGRESSION ──────
@@ -1107,7 +1099,7 @@ async def year_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i, res in enumerate(results):
         if not status == "sent": response += f"📄 {i+1}. **{res['title']}**\n"
         keyboard.append([InlineKeyboardButton(f"📥 Download V{i+1}", callback_data=f"dl_{i}")])
-    keyboard.append([InlineKeyboardButton("🔙 Back", callback_data=f"exam_{cat_key}_{exam_key}")])
+    keyboard.append([InlineKeyboardButton("🔙 Back", callback_data=f"exam|{cat_name}|{exam_name}")])
     
     try: await wait_msg.edit_text(response + footer, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
     except: pass
