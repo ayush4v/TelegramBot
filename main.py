@@ -39,8 +39,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Constants
-BOT_VERSION = "v12.3 Stable-Push"
+BOT_VERSION = "v12.4 Final-Stable"
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+print(f"DEBUG: EXECUTION REACHED MAIN.PY - VERSION {BOT_VERSION}")
 logger.info(f"🛠 Loading ExamBot {BOT_VERSION}...")
 
 # Expanded Exam Categories
