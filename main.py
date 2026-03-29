@@ -3,7 +3,7 @@ import logging
 import os
 import io
 import aiohttp
-from typing import List, Dict
+from typing import List, Dict, Tuple
 
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
