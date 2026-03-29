@@ -39,7 +39,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Constants
+BOT_VERSION = "v12.1 Stable-Push"
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+logger.info(f"🛠 Loading ExamBot {BOT_VERSION}...")
 
 # Expanded Exam Categories
 EXAM_CATEGORIES = {
@@ -90,10 +92,8 @@ YEARS = ["2024", "2023", "2022", "2021", "2020", "2019", "2018", "Older"]
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Shows main categories."""
-    # VERSION IDENTIFICATION
-    version = "v11.0 LIVE Premium"
     text = (
-        f"👋 **Welcome to the One-Click Exam Paper Bot {version}**\n\n"
+        f"👋 **Welcome to the One-Click Exam Paper Bot {BOT_VERSION}**\n\n"
         "I provide **Direct PDF Downloads** for all major Indian exams (JEE, NEET, SSC, UPSC, CBSE, etc.) directly in this chat.\n\n"
         "❌ **No more annoying links or redirects!**\n\n"
         "Please select a **Category** below to receive your paper instantly:"
@@ -1071,7 +1071,7 @@ async def year_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         live_res, search_stats = await search_papers(final_query, limit=5-len(results))
         for r in live_res: add(r['title'], r['url'])
 
-    footer = "\n\n---\n🤖 **ExamBot v12.0** | ⚡ `Stable-Push`"
+    footer = f"\n\n---\n🤖 **ExamBot {BOT_VERSION}**"
 
     if not results:
         report = f"❌ **No results found for {exam_name} ({year}).**"
@@ -1167,7 +1167,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             results.append(res)
             seen_urls.add(res['url'])
 
-    footer = "\n\n---\n🤖 **ExamBot v12.0** | ⚡ `Stable-Push`"
+    footer = f"\n\n---\n🤖 **ExamBot {BOT_VERSION}**"
 
     if not results:
         report = f"❌ **No results found.**\n\n🔎 Diagnostics: `{search_stats}`" if search_stats else "❌ **No results found.**"
