@@ -1,4 +1,13 @@
-# Student PYQ Telegram Bot 📚
+---
+title: Exam Assistant Bot
+emoji: 📚
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+pinned: false
+---
+
+# Exam Assistant Bot v11.0 LIVE 📚
 
 Ek simple Telegram bot jo students ko **Previous Year Question Papers (PYQ)** PDF format mein dhoondne mein help karta hai.
 

@@ -19,6 +19,10 @@ from bs4 import BeautifulSoup
 import urllib.parse
 from aiohttp import web
 from duckduckgo_search import DDGS
+import threading
+import requests
+import time
+import primp
 
 # Load variables from .env or .env.token
 if os.path.exists(".env"):
@@ -111,16 +115,21 @@ async def category_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Shows exams in a category."""
     query = update.callback_query
     await query.answer()
-    cat_name = query.data.replace("cat_", "")
+    # Handle both encoded (with underscores) and non-encoded cat names
+    cat_raw = query.data.replace("cat_", "")
+    cat_name = cat_raw.replace("_", " ")  # Decode underscores back to spaces
     exams = EXAM_CATEGORIES.get(cat_name, {})
     
     text = f"📂 **Category: {cat_name}**\n\nNow, select a specific **Exam** from the list below:"
     keyboard = []
     exam_names = list(exams.keys())
+    cat_key = cat_name.replace(" ", "_")
     for i in range(0, len(exam_names), 2):
-        row = [InlineKeyboardButton(exam_names[i], callback_data=f"exam_{cat_name}_{exam_names[i]}")]
+        exam_key_1 = exam_names[i].replace(" ", "_")
+        row = [InlineKeyboardButton(exam_names[i], callback_data=f"exam_{cat_key}_{exam_key_1}")]
         if i+1 < len(exam_names):
-            row.append(InlineKeyboardButton(exam_names[i+1], callback_data=f"exam_{cat_name}_{exam_names[i+1]}"))
+            exam_key_2 = exam_names[i+1].replace(" ", "_")
+            row.append(InlineKeyboardButton(exam_names[i+1], callback_data=f"exam_{cat_key}_{exam_key_2}"))
         keyboard.append(row)
     
     keyboard.append([InlineKeyboardButton("🔙 Back to Categories", callback_data="back_cats")])
@@ -132,18 +141,21 @@ async def exam_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     parts = query.data.split("_")
-    cat_name = parts[1]
-    exam_name = parts[2]
+    # cat_key is parts[1], exam_key is parts[2], both encoded with underscores
+    cat_key = parts[1]
+    exam_key = parts[2]
+    cat_name = cat_key.replace("_", " ")
+    exam_name = exam_key.replace("_", " ")
     
     text = f"🎯 **Selected Exam: {exam_name}**\n\nWhich **Academic Year** paper are you looking for?"
     keyboard = []
     for i in range(0, len(YEARS), 2):
-        row = [InlineKeyboardButton(YEARS[i], callback_data=f"year_{cat_name}_{exam_name}_{YEARS[i]}")]
+        row = [InlineKeyboardButton(YEARS[i], callback_data=f"year_{cat_key}_{exam_key}_{YEARS[i]}")]
         if i+1 < len(YEARS):
-            row.append(InlineKeyboardButton(YEARS[i+1], callback_data=f"year_{cat_name}_{exam_name}_{YEARS[i+1]}"))
+            row.append(InlineKeyboardButton(YEARS[i+1], callback_data=f"year_{cat_key}_{exam_key}_{YEARS[i+1]}"))
         keyboard.append(row)
     
-    keyboard.append([InlineKeyboardButton("🔙 Back to Exams", callback_data=f"cat_{cat_name}")])
+    keyboard.append([InlineKeyboardButton("🔙 Back to Exams", callback_data=f"cat_{cat_key}")])
     
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
 
@@ -162,74 +174,111 @@ async def get_session():
     return session_instance
 
 
-# Rotating User-Agents to avoid detection on cloud IPs
+# Rotating profiles and user-agents
+IMPERSONATES = ["chrome_123", "chrome_110", "safari_17", "edge_119"]
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
 ]
-import random
 
-async def search_bing(session, query: str, limit: int = 8) -> List[dict]:
-    """Scrape Bing search results - works reliably from cloud IPs."""
+async def search_ecosia(query: str, limit: int = 5) -> List[dict]:
+    """Ecosia: Often less bot-detection than Google/Bing on cloud IPs."""
     results = []
     try:
-        headers = {
-            "User-Agent": random.choice(USER_AGENTS),
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Referer": "https://www.bing.com/",
-        }
-        encoded_q = urllib.parse.quote(f"{query} filetype:pdf OR site:aglasem.com OR site:examfare.com")
-        url = f"https://www.bing.com/search?q={encoded_q}&count=15&setlang=en"
-        async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=12)) as resp:
-            if resp.status == 200:
-                html = await resp.text()
-                soup = BeautifulSoup(html, 'html.parser')
-                for li in soup.select('li.b_algo')[:limit]:
+        async with primp.AsyncClient(impersonate=random.choice(IMPERSONATES)) as client:
+            encoded_q = urllib.parse.quote(f"{query} pdf")
+            url = f"https://www.ecosia.org/search?q={encoded_q}"
+            headers = {"User-Agent": random.choice(USER_AGENTS)}
+            
+            resp = await client.get(url, timeout=12, headers=headers)
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                # Ecosia search results are usually in article.result-card
+                for card in soup.select('article.result'):
+                    a = card.select_one('a.result-title')
+                    if a and a.get('href', '').startswith('http'):
+                        results.append({"title": a.get_text()[:80], "url": a['href']})
+                    if len(results) >= limit: break
+    except Exception as e:
+        logger.warning(f"Ecosia search error: {e}")
+    return results
+
+async def search_google(query: str, limit: int = 5) -> List[dict]:
+    """Scrape Google Search (Standard) with multiple selector patterns."""
+    results = []
+    try:
+        async with primp.AsyncClient(impersonate=random.choice(IMPERSONATES)) as client:
+            encoded_q = urllib.parse.quote(f"{query} pdf")
+            url = f"https://www.google.com/search?q={encoded_q}&num=10"
+            headers = {"User-Agent": random.choice(USER_AGENTS)}
+            
+            resp = await client.get(url, timeout=12, headers=headers)
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                # Try multiple common selectors
+                selectors = ['div.g', 'div.yuRUbf', 'div.MjjYud']
+                for selector in selectors:
+                    for div in soup.select(selector):
+                        a = div.select_one('a')
+                        if a and a.get('href', '').startswith('http') and not "google.com" in a['href']:
+                            title_tag = div.select_one('h3')
+                            title = title_tag.get_text() if title_tag else "Search Result"
+                            results.append({"title": title[:80], "url": a['href']})
+                        if len(results) >= limit: break
+                    if results: break # If first selector works, don't try others
+    except Exception as e:
+        logger.warning(f"Google search error: {e}")
+    return results
+
+async def search_bing(query: str, limit: int = 8) -> List[dict]:
+    """Scrape Bing with enhanced resilience."""
+    results = []
+    try:
+        async with primp.AsyncClient(impersonate=random.choice(IMPERSONATES)) as client:
+            encoded_q = urllib.parse.quote(f"{query} pdf")
+            url = f"https://www.bing.com/search?q={encoded_q}&count=15"
+            headers = {"User-Agent": random.choice(USER_AGENTS)}
+            
+            resp = await client.get(url, timeout=12, headers=headers)
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                for li in soup.select('li.b_algo'):
                     a_tag = li.select_one('h2 a')
                     if a_tag:
                         title = a_tag.get_text(strip=True)
                         href = a_tag.get('href', '')
                         if href and href.startswith('http'):
                             results.append({"title": title[:80], "url": href})
-            else:
-                logger.warning(f"Bing returned status {resp.status}")
+                    if len(results) >= limit: break
     except Exception as e:
-        logger.warning(f"Bing search error: {e}")
+        logger.warning(f"Bing error: {e}")
     return results
 
-async def search_ddg(session, query: str, limit: int = 8) -> List[dict]:
-    """Scrape DuckDuckGo HTML results - cloud-IP friendly fallback."""
+async def search_ddg_html(query: str, limit: int = 8) -> List[dict]:
+    """Scrape DuckDuckGo HTML Lite."""
     results = []
     try:
-        headers = {
-            "User-Agent": random.choice(USER_AGENTS),
-            "Accept-Language": "en-US,en;q=0.9",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        }
-        encoded_q = urllib.parse.quote(f"{query} pdf")
-        url = f"https://html.duckduckgo.com/html/?q={encoded_q}"
-        async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=12)) as resp:
-            if resp.status == 200:
-                html = await resp.text()
-                soup = BeautifulSoup(html, 'html.parser')
-                for a_tag in soup.select('a.result__a')[:limit]:
+        async with primp.AsyncClient(impersonate=random.choice(IMPERSONATES)) as client:
+            encoded_q = urllib.parse.quote(f"{query} pdf")
+            url = f"https://html.duckduckgo.com/html/?q={encoded_q}"
+            headers = {"User-Agent": random.choice(USER_AGENTS)}
+            
+            resp = await client.get(url, timeout=12, headers=headers)
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                for a_tag in soup.select('a.result__a'):
                     title = a_tag.get_text(strip=True)
                     href = a_tag.get('href', '')
-                    # DDG wraps URLs, need to extract actual URL
                     if 'uddg=' in href:
-                        try:
-                            parsed = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
-                            href = urllib.parse.unquote(parsed.get('uddg', [''])[0])
-                        except: pass
+                        parsed = urllib.parse.parse_qs(urllib.parse.urlparse(href).query)
+                        href = urllib.parse.unquote(parsed.get('uddg', [''])[0])
+                    
                     if href and href.startswith('http'):
                         results.append({"title": title[:80], "url": href})
-            else:
-                logger.warning(f"DDG returned status {resp.status}")
+                    if len(results) >= limit: break
     except Exception as e:
-        logger.warning(f"DDG search error: {e}")
+        logger.warning(f"DDG HTML error: {e}")
     return results
 
 
@@ -238,308 +287,709 @@ async def search_ddg(session, query: str, limit: int = 8) -> List[dict]:
 # Keys are lowercase exam identifiers (with optional year)
 # ─────────────────────────────────────────────────────────────
 STATIC_DB: Dict[str, List[dict]] = {
-    # JEE MAINS
-    "jee mains 2024": [{"title": "JEE Main 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2024/"},
-                       {"title": "JEE Main 2024 - Careers360", "url": "https://engineering.careers360.com/articles/jee-main-previous-year-question-papers"}],
-    "jee mains 2023": [{"title": "JEE Main 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2023/"}],
-    "jee mains 2022": [{"title": "JEE Main 2022 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2022/"}],
-    "jee mains 2021": [{"title": "JEE Main 2021 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2021/"}],
-    "jee mains 2020": [{"title": "JEE Main 2020 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2020/"}],
-    "jee mains 2019": [{"title": "JEE Main 2019 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2019/"}],
-    "jee mains 2018": [{"title": "JEE Main 2018 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2018/"}],
-    "jee mains":      [{"title": "JEE Main All Year Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-question-papers/"},
-                       {"title": "JEE Main PYQ - Careers360", "url": "https://engineering.careers360.com/articles/jee-main-previous-year-question-papers"}],
-    # JEE ADVANCED
-    "jee advanced 2024": [{"title": "JEE Advanced 2024 Paper 1&2 - AglaSem", "url": "https://schools.aglasem.com/tag/jee-advanced-2024/"}],
-    "jee advanced 2023": [{"title": "JEE Advanced 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-advanced-2023/"}],
-    "jee advanced 2022": [{"title": "JEE Advanced 2022 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-advanced-2022/"}],
-    "jee advanced 2021": [{"title": "JEE Advanced 2021 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-advanced-2021/"}],
-    "jee advanced 2020": [{"title": "JEE Advanced 2020 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-advanced-2020/"}],
-    "jee advanced":      [{"title": "JEE Advanced All Year Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-advanced-question-papers/"},
-                          {"title": "JEE Advanced PYQ - Careers360", "url": "https://engineering.careers360.com/articles/jee-advanced-previous-year-question-papers"}],
-    # NEET
-    "neet ug 2024": [{"title": "NEET 2024 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2024/"},
-                     {"title": "NEET 2024 - Careers360", "url": "https://medicine.careers360.com/articles/neet-previous-year-question-papers"}],
-    "neet ug 2023": [{"title": "NEET 2023 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2023/"}],
-    "neet ug 2022": [{"title": "NEET 2022 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2022/"}],
-    "neet ug 2021": [{"title": "NEET 2021 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2021/"}],
-    "neet ug 2020": [{"title": "NEET 2020 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2020/"}],
-    "neet ug 2019": [{"title": "NEET 2019 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2019/"}],
-    "neet ug 2018": [{"title": "NEET 2018 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2018/"}],
-    "neet ug":      [{"title": "NEET All Year Papers - AglaSem", "url": "https://schools.aglasem.com/tag/neet-question-papers/"},
-                     {"title": "NEET PYQ - Careers360", "url": "https://medicine.careers360.com/articles/neet-previous-year-question-papers"}],
+    # ═══════════════════════════════════════════════════════════
+    # JEE MAINS - All Years 2018-2024
+    # ═══════════════════════════════════════════════════════════
+    "jee mains 2024": [
+        {"title": "JEE Main 2024 Jan & Apr Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2024/"},
+        {"title": "JEE Main 2024 All Papers PDF - SelfStudys", "url": "https://www.selfstudys.com/jee-main-2024-question-paper"},
+    ],
+    "jee mains 2023": [
+        {"title": "JEE Main 2023 Jan & Apr Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2023/"},
+        {"title": "JEE Main 2023 Papers PDF", "url": "https://www.selfstudys.com/jee-main-2023-question-paper"},
+    ],
+    "jee mains 2022": [
+        {"title": "JEE Main 2022 Jun & Jul Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2022/"},
+        {"title": "JEE Main 2022 Papers PDF", "url": "https://www.selfstudys.com/jee-main-2022-question-paper"},
+    ],
+    "jee mains 2021": [
+        {"title": "JEE Main 2021 Feb-Aug Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2021/"},
+        {"title": "JEE Main 2021 Papers PDF", "url": "https://www.selfstudys.com/jee-main-2021-question-paper"},
+    ],
+    "jee mains 2020": [
+        {"title": "JEE Main 2020 Jan & Sep Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2020/"},
+        {"title": "JEE Main 2020 Papers PDF", "url": "https://www.selfstudys.com/jee-main-2020-question-paper"},
+    ],
+    "jee mains 2019": [
+        {"title": "JEE Main 2019 Jan & Apr Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2019/"},
+        {"title": "JEE Main 2019 Papers PDF", "url": "https://www.selfstudys.com/jee-main-2019-question-paper"},
+    ],
+    "jee mains 2018": [
+        {"title": "JEE Main 2018 Offline & Online - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2018/"},
+        {"title": "JEE Main 2018 Papers PDF", "url": "https://www.selfstudys.com/jee-main-2018-question-paper"},
+    ],
+    "jee mains": [
+        {"title": "JEE Main All Years Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-question-papers/"},
+        {"title": "JEE Main Previous Year Papers - Careers360", "url": "https://engineering.careers360.com/articles/jee-main-previous-year-question-papers"},
+    ],
+    
+    # ═══════════════════════════════════════════════════════════
+    # JEE ADVANCED - All Years 2018-2024
+    # ═══════════════════════════════════════════════════════════
+    "jee advanced 2024": [
+        {"title": "JEE Advanced 2024 Paper 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/jee-advanced-2024/"},
+        {"title": "JEE Advanced 2024 Papers PDF", "url": "https://www.selfstudys.com/jee-advanced-2024-question-paper"},
+    ],
+    "jee advanced 2023": [
+        {"title": "JEE Advanced 2023 Paper 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/jee-advanced-2023/"},
+        {"title": "JEE Advanced 2023 Papers PDF", "url": "https://www.selfstudys.com/jee-advanced-2023-question-paper"},
+    ],
+    "jee advanced 2022": [
+        {"title": "JEE Advanced 2022 Paper 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/jee-advanced-2022/"},
+        {"title": "JEE Advanced 2022 Papers PDF", "url": "https://www.selfstudys.com/jee-advanced-2022-question-paper"},
+    ],
+    "jee advanced 2021": [
+        {"title": "JEE Advanced 2021 Paper 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/jee-advanced-2021/"},
+        {"title": "JEE Advanced 2021 Papers PDF", "url": "https://www.selfstudys.com/jee-advanced-2021-question-paper"},
+    ],
+    "jee advanced 2020": [
+        {"title": "JEE Advanced 2020 Paper 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/jee-advanced-2020/"},
+        {"title": "JEE Advanced 2020 Papers PDF", "url": "https://www.selfstudys.com/jee-advanced-2020-question-paper"},
+    ],
+    "jee advanced 2019": [
+        {"title": "JEE Advanced 2019 Paper 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/jee-advanced-2019/"},
+    ],
+    "jee advanced 2018": [
+        {"title": "JEE Advanced 2018 Paper 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/jee-advanced-2018/"},
+    ],
+    "jee advanced": [
+        {"title": "JEE Advanced All Years Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-advanced-question-papers/"},
+        {"title": "JEE Advanced Previous Year Papers - Careers360", "url": "https://engineering.careers360.com/articles/jee-advanced-previous-year-question-papers"},
+    ],
+    
+    # ═══════════════════════════════════════════════════════════
+    # NEET UG - All Years 2018-2024
+    # ═══════════════════════════════════════════════════════════
+    "neet ug 2024": [
+        {"title": "NEET UG 2024 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2024/"},
+        {"title": "NEET 2024 Question Paper with Solutions", "url": "https://www.selfstudys.com/neet-2024-question-paper"},
+    ],
+    "neet ug 2023": [
+        {"title": "NEET UG 2023 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2023/"},
+        {"title": "NEET 2023 Question Paper", "url": "https://www.selfstudys.com/neet-2023-question-paper"},
+    ],
+    "neet ug 2022": [
+        {"title": "NEET UG 2022 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2022/"},
+        {"title": "NEET 2022 Question Paper", "url": "https://www.selfstudys.com/neet-2022-question-paper"},
+    ],
+    "neet ug 2021": [
+        {"title": "NEET UG 2021 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2021/"},
+        {"title": "NEET 2021 Question Paper", "url": "https://www.selfstudys.com/neet-2021-question-paper"},
+    ],
+    "neet ug 2020": [
+        {"title": "NEET UG 2020 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2020/"},
+        {"title": "NEET 2020 Question Paper", "url": "https://www.selfstudys.com/neet-2020-question-paper"},
+    ],
+    "neet ug 2019": [
+        {"title": "NEET UG 2019 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2019/"},
+        {"title": "NEET 2019 Question Paper", "url": "https://www.selfstudys.com/neet-2019-question-paper"},
+    ],
+    "neet ug 2018": [
+        {"title": "NEET UG 2018 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2018/"},
+        {"title": "NEET 2018 Question Paper", "url": "https://www.selfstudys.com/neet-2018-question-paper"},
+    ],
+    "neet ug": [
+        {"title": "NEET All Years Papers - AglaSem", "url": "https://schools.aglasem.com/tag/neet-question-papers/"},
+        {"title": "NEET Previous Year Papers - Careers360", "url": "https://medicine.careers360.com/articles/neet-previous-year-question-papers"},
+    ],
+    
+    # ═══════════════════════════════════════════════════════════
     # NEET PG
+    # ═══════════════════════════════════════════════════════════
     "neet pg 2024": [{"title": "NEET PG 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/neet-pg-2024/"}],
-    "neet pg":      [{"title": "NEET PG Papers - AglaSem", "url": "https://schools.aglasem.com/tag/neet-pg-question-papers/"}],
+    "neet pg 2023": [{"title": "NEET PG 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/neet-pg-2023/"}],
+    "neet pg 2022": [{"title": "NEET PG 2022 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/neet-pg-2022/"}],
+    "neet pg": [{"title": "NEET PG All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/neet-pg-question-papers/"}],
+    
+    # ═══════════════════════════════════════════════════════════
     # AIIMS
+    # ═══════════════════════════════════════════════════════════
     "aiims 2024": [{"title": "AIIMS 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/aiims-2024/"}],
-    "aiims":       [{"title": "AIIMS Medical Papers - AglaSem", "url": "https://schools.aglasem.com/tag/aiims-question-papers/"}],
+    "aiims 2023": [{"title": "AIIMS 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/aiims-2023/"}],
+    "aiims 2022": [{"title": "AIIMS 2022 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/aiims-2022/"}],
+    "aiims 2021": [{"title": "AIIMS 2021 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/aiims-2021/"}],
+    "aiims 2020": [{"title": "AIIMS 2020 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/aiims-2020/"}],
+    "aiims 2019": [{"title": "AIIMS 2019 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/aiims-2019/"}],
+    "aiims 2018": [{"title": "AIIMS 2018 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/aiims-2018/"}],
+    "aiims": [{"title": "AIIMS All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/aiims-question-papers/"}],
+    
+    # ═══════════════════════════════════════════════════════════
     # JIPMER
+    # ═══════════════════════════════════════════════════════════
     "jipmer": [{"title": "JIPMER Medical Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jipmer-question-papers/"}],
-    # GATE
-    "gate 2024": [{"title": "GATE 2024 All Branch Papers - AglaSem", "url": "https://schools.aglasem.com/tag/gate-2024/"}],
-    "gate 2023": [{"title": "GATE 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/gate-2023/"}],
-    "gate 2022": [{"title": "GATE 2022 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/gate-2022/"}],
-    "gate 2021": [{"title": "GATE 2021 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/gate-2021/"}],
-    "gate":      [{"title": "GATE All Year Papers - AglaSem", "url": "https://schools.aglasem.com/tag/gate-question-papers/"}],
+    
+    # ═══════════════════════════════════════════════════════════
+    # GATE - All Years 2018-2024
+    # ═══════════════════════════════════════════════════════════
+    "gate 2024": [
+        {"title": "GATE 2024 All Branch Papers - AglaSem", "url": "https://schools.aglasem.com/tag/gate-2024/"},
+        {"title": "GATE 2024 Papers PDF", "url": "https://www.selfstudys.com/gate-2024-question-paper"},
+    ],
+    "gate 2023": [
+        {"title": "GATE 2023 All Branch Papers - AglaSem", "url": "https://schools.aglasem.com/tag/gate-2023/"},
+        {"title": "GATE 2023 Papers PDF", "url": "https://www.selfstudys.com/gate-2023-question-paper"},
+    ],
+    "gate 2022": [
+        {"title": "GATE 2022 All Branch Papers - AglaSem", "url": "https://schools.aglasem.com/tag/gate-2022/"},
+        {"title": "GATE 2022 Papers PDF", "url": "https://www.selfstudys.com/gate-2022-question-paper"},
+    ],
+    "gate 2021": [
+        {"title": "GATE 2021 All Branch Papers - AglaSem", "url": "https://schools.aglasem.com/tag/gate-2021/"},
+        {"title": "GATE 2021 Papers PDF", "url": "https://www.selfstudys.com/gate-2021-question-paper"},
+    ],
+    "gate 2020": [
+        {"title": "GATE 2020 All Branch Papers - AglaSem", "url": "https://schools.aglasem.com/tag/gate-2020/"},
+    ],
+    "gate 2019": [
+        {"title": "GATE 2019 All Branch Papers - AglaSem", "url": "https://schools.aglasem.com/tag/gate-2019/"},
+    ],
+    "gate 2018": [
+        {"title": "GATE 2018 All Branch Papers - AglaSem", "url": "https://schools.aglasem.com/tag/gate-2018/"},
+    ],
+    "gate": [
+        {"title": "GATE All Years Papers - AglaSem", "url": "https://schools.aglasem.com/tag/gate-question-papers/"},
+        {"title": "GATE Previous Papers - MadeEasy", "url": "https://www.madeeasy.in/study-material/gate-previous-year-papers"},
+    ],
+    
+    # ═══════════════════════════════════════════════════════════
     # BITSAT
-    "bitsat": [{"title": "BITSAT Papers - AglaSem", "url": "https://schools.aglasem.com/tag/bitsat-question-papers/"}],
+    # ═══════════════════════════════════════════════════════════
+    "bitsat": [
+        {"title": "BITSAT Papers - AglaSem", "url": "https://schools.aglasem.com/tag/bitsat-question-papers/"},
+        {"title": "BITSAT Previous Papers PDF", "url": "https://www.selfstudys.com/bitsat-question-paper"},
+    ],
+    
+    # ═══════════════════════════════════════════════════════════
     # WBJEE
-    "wbjee": [{"title": "WBJEE Papers - AglaSem", "url": "https://schools.aglasem.com/tag/wbjee-question-papers/"}],
-    "wbjee jelet": [{"title": "WBJEE JELET Papers - AglaSem", "url": "https://schools.aglasem.com/tag/wbjee-jelet-question-papers/"},
-                    {"title": "JELET Previous Papers - Examfare", "url": "http://www.examfare.com/p/jelet-previous-year-question-paper.html"}],
+    # ═══════════════════════════════════════════════════════════
+    "wbjee 2024": [{"title": "WBJEE 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/wbjee-2024/"}],
+    "wbjee 2023": [{"title": "WBJEE 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/wbjee-2023/"}],
+    "wbjee 2022": [{"title": "WBJEE 2022 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/wbjee-2022/"}],
+    "wbjee 2021": [{"title": "WBJEE 2021 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/wbjee-2021/"}],
+    "wbjee 2020": [{"title": "WBJEE 2020 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/wbjee-2020/"}],
+    "wbjee": [
+        {"title": "WBJEE All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/wbjee-question-papers/"},
+        {"title": "WBJEE Previous Papers", "url": "https://www.selfstudys.com/wbjee-question-paper"},
+    ],
+    "wbjee jelet": [
+        {"title": "WBJEE JELET Papers - AglaSem", "url": "https://schools.aglasem.com/tag/wbjee-jelet-question-papers/"},
+        {"title": "JELET Previous Papers - Examfare", "url": "http://www.examfare.com/p/jelet-previous-year-question-paper.html"},
+    ],
     "wbjee jenpas": [{"title": "WBJEE JENPAS Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jenpas-ug-question-papers/"}],
+    
+    # ═══════════════════════════════════════════════════════════
     # MHT CET
-    "mht cet": [{"title": "MHT CET Papers - AglaSem", "url": "https://schools.aglasem.com/tag/mht-cet-question-papers/"}],
-    # UPSC CSE
-    "upsc cse 2024": [{"title": "UPSC CSE 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2024/"}],
-    "upsc cse 2023": [{"title": "UPSC CSE 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2023/"}],
-    "upsc cse 2022": [{"title": "UPSC CSE 2022 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2022/"}],
-    "upsc cse 2021": [{"title": "UPSC CSE 2021 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2021/"}],
-    "upsc cse 2020": [{"title": "UPSC CSE 2020 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2020/"}],
-    "upsc cse 2019": [{"title": "UPSC CSE 2019 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2019/"}],
-    "upsc cse":      [{"title": "UPSC CSE All Year Papers - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-question-papers/"},
-                      {"title": "UPSC Official Paper Archive", "url": "https://upsc.gov.in/examinations/previous-question-papers"}],
-    # SSC CGL
-    "ssc cgl 2024": [{"title": "SSC CGL 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2024/"}],
-    "ssc cgl 2023": [{"title": "SSC CGL 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2023/"}],
-    "ssc cgl 2022": [{"title": "SSC CGL 2022 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2022/"}],
-    "ssc cgl 2021": [{"title": "SSC CGL 2021 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2021/"}],
-    "ssc cgl":      [{"title": "SSC CGL All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-question-papers/"},
-                     {"title": "SSC Official PYQ", "url": "https://ssc.nic.in/Portal/Previous_Question_Paper"}],
-    # SSC CHSL
+    # ═══════════════════════════════════════════════════════════
+    "mht cet": [
+        {"title": "MHT CET Papers - AglaSem", "url": "https://schools.aglasem.com/tag/mht-cet-question-papers/"},
+        {"title": "MHT CET Previous Papers", "url": "https://www.selfstudys.com/mht-cet-question-paper"},
+    ],
+    
+    # ═══════════════════════════════════════════════════════════
+    # UPSC CSE - All Years 2018-2024
+    # ═══════════════════════════════════════════════════════════
+    "upsc cse 2024": [
+        {"title": "UPSC CSE 2024 Prelims & Mains - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2024/"},
+        {"title": "UPSC 2024 Official Papers", "url": "https://upsc.gov.in/examinations/previous-question-papers"},
+    ],
+    "upsc cse 2023": [
+        {"title": "UPSC CSE 2023 Prelims & Mains - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2023/"},
+        {"title": "UPSC 2023 Official Papers", "url": "https://upsc.gov.in/examinations/previous-question-papers"},
+    ],
+    "upsc cse 2022": [
+        {"title": "UPSC CSE 2022 Prelims & Mains - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2022/"},
+    ],
+    "upsc cse 2021": [
+        {"title": "UPSC CSE 2021 Prelims & Mains - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2021/"},
+    ],
+    "upsc cse 2020": [
+        {"title": "UPSC CSE 2020 Prelims & Mains - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2020/"},
+    ],
+    "upsc cse 2019": [
+        {"title": "UPSC CSE 2019 Prelims & Mains - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2019/"},
+    ],
+    "upsc cse 2018": [
+        {"title": "UPSC CSE 2018 Prelims & Mains - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2018/"},
+    ],
+    "upsc cse": [
+        {"title": "UPSC CSE All Year Papers - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-question-papers/"},
+        {"title": "UPSC Official Paper Archive", "url": "https://upsc.gov.in/examinations/previous-question-papers"},
+    ],
+    
+    # ═══════════════════════════════════════════════════════════
+    # SSC CGL - All Years 2018-2024
+    # ═══════════════════════════════════════════════════════════
+    "ssc cgl 2024": [
+        {"title": "SSC CGL 2024 Tier 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2024/"},
+        {"title": "SSC CGL 2024 Papers PDF", "url": "https://www.selfstudys.com/ssc-cgl-2024-question-paper"},
+    ],
+    "ssc cgl 2023": [
+        {"title": "SSC CGL 2023 Tier 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2023/"},
+        {"title": "SSC CGL 2023 Papers PDF", "url": "https://www.selfstudys.com/ssc-cgl-2023-question-paper"},
+    ],
+    "ssc cgl 2022": [
+        {"title": "SSC CGL 2022 Tier 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2022/"},
+        {"title": "SSC CGL 2022 Papers PDF", "url": "https://www.selfstudys.com/ssc-cgl-2022-question-paper"},
+    ],
+    "ssc cgl 2021": [
+        {"title": "SSC CGL 2021 Tier 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2021/"},
+        {"title": "SSC CGL 2021 Papers PDF", "url": "https://www.selfstudys.com/ssc-cgl-2021-question-paper"},
+    ],
+    "ssc cgl 2020": [
+        {"title": "SSC CGL 2020 Tier 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2020/"},
+    ],
+    "ssc cgl 2019": [
+        {"title": "SSC CGL 2019 Tier 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2019/"},
+    ],
+    "ssc cgl 2018": [
+        {"title": "SSC CGL 2018 Tier 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2018/"},
+    ],
+    "ssc cgl": [
+        {"title": "SSC CGL All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-question-papers/"},
+        {"title": "SSC Official PYQ Portal", "url": "https://ssc.nic.in/Portal/Previous_Question_Paper"},
+    ],
+    
+    # ═══════════════════════════════════════════════════════════
+    # SSC CHSL - All Years 2018-2024
+    # ═══════════════════════════════════════════════════════════
     "ssc chsl 2024": [{"title": "SSC CHSL 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-chsl-2024/"}],
     "ssc chsl 2023": [{"title": "SSC CHSL 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-chsl-2023/"}],
-    "ssc chsl":      [{"title": "SSC CHSL All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-chsl-question-papers/"}],
-    # IBPS PO
+    "ssc chsl 2022": [{"title": "SSC CHSL 2022 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-chsl-2022/"}],
+    "ssc chsl 2021": [{"title": "SSC CHSL 2021 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-chsl-2021/"}],
+    "ssc chsl 2020": [{"title": "SSC CHSL 2020 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-chsl-2020/"}],
+    "ssc chsl 2019": [{"title": "SSC CHSL 2019 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-chsl-2019/"}],
+    "ssc chsl 2018": [{"title": "SSC CHSL 2018 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-chsl-2018/"}],
+    "ssc chsl": [{"title": "SSC CHSL All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-chsl-question-papers/"}],
+    
+    # ═══════════════════════════════════════════════════════════
+    # IBPS PO - All Years
+    # ═══════════════════════════════════════════════════════════
     "ibps po 2024": [{"title": "IBPS PO 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ibps-po-2024/"}],
     "ibps po 2023": [{"title": "IBPS PO 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ibps-po-2023/"}],
-    "ibps po":      [{"title": "IBPS PO All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ibps-po-question-papers/"}],
-    # SBI PO
+    "ibps po 2022": [{"title": "IBPS PO 2022 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ibps-po-2022/"}],
+    "ibps po 2021": [{"title": "IBPS PO 2021 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ibps-po-2021/"}],
+    "ibps po 2020": [{"title": "IBPS PO 2020 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ibps-po-2020/"}],
+    "ibps po": [{"title": "IBPS PO All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ibps-po-question-papers/"}],
+    
+    # ═══════════════════════════════════════════════════════════
+    # SBI PO - All Years
+    # ═══════════════════════════════════════════════════════════
     "sbi po 2024": [{"title": "SBI PO 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/sbi-po-2024/"}],
-    "sbi po":      [{"title": "SBI PO All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/sbi-po-question-papers/"}],
-    # RRB NTPC
+    "sbi po 2023": [{"title": "SBI PO 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/sbi-po-2023/"}],
+    "sbi po 2022": [{"title": "SBI PO 2022 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/sbi-po-2022/"}],
+    "sbi po 2021": [{"title": "SBI PO 2021 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/sbi-po-2021/"}],
+    "sbi po 2020": [{"title": "SBI PO 2020 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/sbi-po-2020/"}],
+    "sbi po": [{"title": "SBI PO All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/sbi-po-question-papers/"}],
+    
+    # ═══════════════════════════════════════════════════════════
+    # RRB NTPC - All Years
+    # ═══════════════════════════════════════════════════════════
     "rrb ntpc 2024": [{"title": "RRB NTPC 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/rrb-ntpc-2024/"}],
-    "rrb ntpc":      [{"title": "RRB NTPC All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/rrb-ntpc-question-papers/"}],
-    # NDA/CDS
-    "nda 2024": [{"title": "NDA 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2024/"}],
-    "nda 2023": [{"title": "NDA 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2023/"}],
-    "nda":      [{"title": "NDA All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-question-papers/"},
-                 {"title": "NDA Official - UPSC", "url": "https://upsc.gov.in/examinations/previous-question-papers"}],
+    "rrb ntpc 2023": [{"title": "RRB NTPC 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/rrb-ntpc-2023/"}],
+    "rrb ntpc 2022": [{"title": "RRB NTPC 2022 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/rrb-ntpc-2022/"}],
+    "rrb ntpc 2021": [{"title": "RRB NTPC 2021 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/rrb-ntpc-2021/"}],
+    "rrb ntpc 2020": [{"title": "RRB NTPC 2020 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/rrb-ntpc-2020/"}],
+    "rrb ntpc": [{"title": "RRB NTPC All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/rrb-ntpc-question-papers/"}],
+    
+    # ═══════════════════════════════════════════════════════════
+    # NDA - All Years 2018-2024
+    # ═══════════════════════════════════════════════════════════
+    "nda 2024": [
+        {"title": "NDA 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2024/"},
+        {"title": "NDA 2024 Official - UPSC", "url": "https://upsc.gov.in/examinations/previous-question-papers"},
+    ],
+    "nda 2023": [
+        {"title": "NDA 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2023/"},
+        {"title": "NDA 2023 Official - UPSC", "url": "https://upsc.gov.in/examinations/previous-question-papers"},
+    ],
+    "nda 2022": [{"title": "NDA 2022 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2022/"}],
+    "nda 2021": [{"title": "NDA 2021 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2021/"}],
+    "nda 2020": [{"title": "NDA 2020 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2020/"}],
+    "nda 2019": [{"title": "NDA 2019 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2019/"}],
+    "nda 2018": [{"title": "NDA 2018 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2018/"}],
+    "nda": [
+        {"title": "NDA All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-question-papers/"},
+        {"title": "NDA Official - UPSC", "url": "https://upsc.gov.in/examinations/previous-question-papers"},
+    ],
+    
+    # ═══════════════════════════════════════════════════════════
+    # CDS - All Years
+    # ═══════════════════════════════════════════════════════════
     "cds 2024": [{"title": "CDS 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cds-2024/"}],
-    "cds":      [{"title": "CDS All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cds-question-papers/"}],
-    # CBSE Class 10
-    "cbse class 10 2024": [{"title": "CBSE Class 10 2024 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2024/"}],
-    "cbse class 10 2023": [{"title": "CBSE Class 10 2023 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2023/"}],
-    "cbse class 10 2022": [{"title": "CBSE Class 10 2022 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2022/"}],
-    "cbse class 10 2021": [{"title": "CBSE Class 10 2021 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2021/"}],
-    "cbse class 10 2020": [{"title": "CBSE Class 10 2020 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2020/"}],
-    "cbse class 10":      [{"title": "CBSE Class 10 All Year Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-question-papers/"},
-                           {"title": "CBSE Class 10 Official Sample Papers", "url": "https://cbseacademic.nic.in/SQP_CLASSXI.html"}],
-    # CBSE Class 12
-    "cbse class 12 2024": [{"title": "CBSE Class 12 2024 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2024/"}],
-    "cbse class 12 2023": [{"title": "CBSE Class 12 2023 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2023/"}],
-    "cbse class 12 2022": [{"title": "CBSE Class 12 2022 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2022/"}],
-    "cbse class 12 2021": [{"title": "CBSE Class 12 2021 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2021/"}],
-    "cbse class 12 2020": [{"title": "CBSE Class 12 2020 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2020/"}],
-    "cbse class 12":      [{"title": "CBSE Class 12 All Year Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-question-papers/"},
-                           {"title": "CBSE Class 12 Official Sample Papers", "url": "https://cbseacademic.nic.in/SQP_CLASSXII.html"}],
+    "cds 2023": [{"title": "CDS 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cds-2023/"}],
+    "cds 2022": [{"title": "CDS 2022 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cds-2022/"}],
+    "cds 2021": [{"title": "CDS 2021 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cds-2021/"}],
+    "cds 2020": [{"title": "CDS 2020 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cds-2020/"}],
+    "cds": [{"title": "CDS All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cds-question-papers/"}],
+    
+    # ═══════════════════════════════════════════════════════════
+    # CBSE Class 10 - All Years 2018-2024
+    # ═══════════════════════════════════════════════════════════
+    "cbse class 10 2024": [
+        {"title": "CBSE Class 10 2024 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2024/"},
+        {"title": "CBSE 10th 2024 All Subjects", "url": "https://www.selfstudys.com/cbse/class-10th-question-paper/2024"},
+    ],
+    "cbse class 10 2023": [
+        {"title": "CBSE Class 10 2023 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2023/"},
+        {"title": "CBSE 10th 2023 All Subjects", "url": "https://www.selfstudys.com/cbse/class-10th-question-paper/2023"},
+    ],
+    "cbse class 10 2022": [
+        {"title": "CBSE Class 10 2022 Term 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2022/"},
+        {"title": "CBSE 10th 2022 All Subjects", "url": "https://www.selfstudys.com/cbse/class-10th-question-paper/2022"},
+    ],
+    "cbse class 10 2021": [
+        {"title": "CBSE Class 10 2021 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2021/"},
+        {"title": "CBSE 10th 2021 All Subjects", "url": "https://www.selfstudys.com/cbse/class-10th-question-paper/2021"},
+    ],
+    "cbse class 10 2020": [
+        {"title": "CBSE Class 10 2020 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2020/"},
+        {"title": "CBSE 10th 2020 All Subjects", "url": "https://www.selfstudys.com/cbse/class-10th-question-paper/2020"},
+    ],
+    "cbse class 10 2019": [
+        {"title": "CBSE Class 10 2019 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2019/"},
+    ],
+    "cbse class 10 2018": [
+        {"title": "CBSE Class 10 2018 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2018/"},
+    ],
+    "cbse class 10": [
+        {"title": "CBSE Class 10 All Years - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-question-papers/"},
+        {"title": "CBSE Official Sample Papers", "url": "https://cbseacademic.nic.in/SQP_CLASSXI.html"},
+        {"title": "CBSE 10th All Years - SelfStudys", "url": "https://www.selfstudys.com/cbse/class-10th-question-paper"},
+    ],
+    
+    # ═══════════════════════════════════════════════════════════
+    # CBSE Class 12 - All Years 2018-2024
+    # ═══════════════════════════════════════════════════════════
+    "cbse class 12 2024": [
+        {"title": "CBSE Class 12 2024 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2024/"},
+        {"title": "CBSE 12th 2024 All Subjects", "url": "https://www.selfstudys.com/cbse/class-12th-question-paper/2024"},
+    ],
+    "cbse class 12 2023": [
+        {"title": "CBSE Class 12 2023 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2023/"},
+        {"title": "CBSE 12th 2023 All Subjects", "url": "https://www.selfstudys.com/cbse/class-12th-question-paper/2023"},
+    ],
+    "cbse class 12 2022": [
+        {"title": "CBSE Class 12 2022 Term 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2022/"},
+        {"title": "CBSE 12th 2022 All Subjects", "url": "https://www.selfstudys.com/cbse/class-12th-question-paper/2022"},
+    ],
+    "cbse class 12 2021": [
+        {"title": "CBSE Class 12 2021 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2021/"},
+        {"title": "CBSE 12th 2021 All Subjects", "url": "https://www.selfstudys.com/cbse/class-12th-question-paper/2021"},
+    ],
+    "cbse class 12 2020": [
+        {"title": "CBSE Class 12 2020 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2020/"},
+        {"title": "CBSE 12th 2020 All Subjects", "url": "https://www.selfstudys.com/cbse/class-12th-question-paper/2020"},
+    ],
+    "cbse class 12 2019": [
+        {"title": "CBSE Class 12 2019 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2019/"},
+    ],
+    "cbse class 12 2018": [
+        {"title": "CBSE Class 12 2018 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2018/"},
+    ],
+    "cbse class 12": [
+        {"title": "CBSE Class 12 All Years - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-question-papers/"},
+        {"title": "CBSE Official Sample Papers", "url": "https://cbseacademic.nic.in/SQP_CLASSXII.html"},
+        {"title": "CBSE 12th All Years - SelfStudys", "url": "https://www.selfstudys.com/cbse/class-12th-question-paper"},
+    ],
+    
+    # ═══════════════════════════════════════════════════════════
     # ICSE / ISC
-    "icse class 10": [{"title": "ICSE Class 10 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/icse-question-papers/"}],
-    "isc class 12":  [{"title": "ISC Class 12 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/isc-question-papers/"}],
+    # ═══════════════════════════════════════════════════════════
+    "icse class 10": [
+        {"title": "ICSE Class 10 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/icse-question-papers/"},
+        {"title": "ICSE 10th Papers - SelfStudys", "url": "https://www.selfstudys.com/icse/class-10th-question-paper"},
+    ],
+    "isc class 12": [
+        {"title": "ISC Class 12 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/isc-question-papers/"},
+        {"title": "ISC 12th Papers - SelfStudys", "url": "https://www.selfstudys.com/isc/class-12th-question-paper"},
+    ],
+    
+    # ═══════════════════════════════════════════════════════════
     # NIOS / UP Board / Bihar Board
-    "nios":        [{"title": "NIOS Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nios-question-papers/"},
-                    {"title": "NIOS Official Papers", "url": "https://www.nios.ac.in/online-services/question-papers.aspx"}],
-    "up board":    [{"title": "UP Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/up-board-question-papers/"}],
-    "bihar board": [{"title": "Bihar Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/bihar-board-question-papers/"}],
-    # MBA/LAW/OTHERS
-    "cat 2024": [{"title": "CAT 2024 Paper - AglaSem", "url": "https://schools.aglasem.com/tag/cat-2024/"}],
-    "cat 2023": [{"title": "CAT 2023 Paper - AglaSem", "url": "https://schools.aglasem.com/tag/cat-2023/"}],
-    "cat 2022": [{"title": "CAT 2022 Paper - AglaSem", "url": "https://schools.aglasem.com/tag/cat-2022/"}],
-    "cat":      [{"title": "CAT All Year Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cat-question-papers/"},
-                 {"title": "CAT PYQ - Careers360", "url": "https://bschool.careers360.com/articles/cat-previous-year-question-papers"}],
-    "clat 2024": [{"title": "CLAT 2024 Paper - AglaSem", "url": "https://schools.aglasem.com/tag/clat-2024/"}],
-    "clat":      [{"title": "CLAT All Year Papers - AglaSem", "url": "https://schools.aglasem.com/tag/clat-question-papers/"}],
-    "cuet 2024": [{"title": "CUET 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cuet-2024/"}],
-    "cuet":      [{"title": "CUET All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cuet-question-papers/"}],
-    "nift":      [{"title": "NIFT Entrance Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nift-question-papers/"}],
+    # ═══════════════════════════════════════════════════════════
+    "nios": [
+        {"title": "NIOS Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nios-question-papers/"},
+        {"title": "NIOS Official Papers", "url": "https://www.nios.ac.in/online-services/question-papers.aspx"},
+    ],
+    "up board": [
+        {"title": "UP Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/up-board-question-papers/"},
+        {"title": "UP Board 10th & 12th Papers", "url": "https://www.selfstudys.com/up-board"},
+    ],
+    "bihar board": [
+        {"title": "Bihar Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/bihar-board-question-papers/"},
+        {"title": "Bihar Board 10th & 12th Papers", "url": "https://www.selfstudys.com/bihar-board"},
+    ],
+    
+    # ═══════════════════════════════════════════════════════════
+    # CAT - All Years 2018-2024
+    # ═══════════════════════════════════════════════════════════
+    "cat 2024": [
+        {"title": "CAT 2024 Paper - AglaSem", "url": "https://schools.aglasem.com/tag/cat-2024/"},
+        {"title": "CAT 2024 Papers PDF", "url": "https://www.selfstudys.com/cat-2024-question-paper"},
+    ],
+    "cat 2023": [
+        {"title": "CAT 2023 Paper - AglaSem", "url": "https://schools.aglasem.com/tag/cat-2023/"},
+        {"title": "CAT 2023 Papers PDF", "url": "https://www.selfstudys.com/cat-2023-question-paper"},
+    ],
+    "cat 2022": [
+        {"title": "CAT 2022 Paper - AglaSem", "url": "https://schools.aglasem.com/tag/cat-2022/"},
+        {"title": "CAT 2022 Papers PDF", "url": "https://www.selfstudys.com/cat-2022-question-paper"},
+    ],
+    "cat 2021": [
+        {"title": "CAT 2021 Paper - AglaSem", "url": "https://schools.aglasem.com/tag/cat-2021/"},
+        {"title": "CAT 2021 Papers PDF", "url": "https://www.selfstudys.com/cat-2021-question-paper"},
+    ],
+    "cat 2020": [
+        {"title": "CAT 2020 Paper - AglaSem", "url": "https://schools.aglasem.com/tag/cat-2020/"},
+    ],
+    "cat 2019": [
+        {"title": "CAT 2019 Paper - AglaSem", "url": "https://schools.aglasem.com/tag/cat-2019/"},
+    ],
+    "cat 2018": [
+        {"title": "CAT 2018 Paper - AglaSem", "url": "https://schools.aglasem.com/tag/cat-2018/"},
+    ],
+    "cat": [
+        {"title": "CAT All Years Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cat-question-papers/"},
+        {"title": "CAT Previous Papers - Careers360", "url": "https://bschool.careers360.com/articles/cat-previous-year-question-papers"},
+    ],
+    
+    # ═══════════════════════════════════════════════════════════
+    # CLAT - All Years
+    # ═══════════════════════════════════════════════════════════
+    "clat 2024": [
+        {"title": "CLAT 2024 Paper - AglaSem", "url": "https://schools.aglasem.com/tag/clat-2024/"},
+        {"title": "CLAT 2024 Papers PDF", "url": "https://www.selfstudys.com/clat-2024-question-paper"},
+    ],
+    "clat 2023": [
+        {"title": "CLAT 2023 Paper - AglaSem", "url": "https://schools.aglasem.com/tag/clat-2023/"},
+        {"title": "CLAT 2023 Papers PDF", "url": "https://www.selfstudys.com/clat-2023-question-paper"},
+    ],
+    "clat 2022": [{"title": "CLAT 2022 Paper - AglaSem", "url": "https://schools.aglasem.com/tag/clat-2022/"}],
+    "clat 2021": [{"title": "CLAT 2021 Paper - AglaSem", "url": "https://schools.aglasem.com/tag/clat-2021/"}],
+    "clat 2020": [{"title": "CLAT 2020 Paper - AglaSem", "url": "https://schools.aglasem.com/tag/clat-2020/"}],
+    "clat": [
+        {"title": "CLAT All Years Papers - AglaSem", "url": "https://schools.aglasem.com/tag/clat-question-papers/"},
+        {"title": "CLAT Papers PDF", "url": "https://www.selfstudys.com/clat-question-paper"},
+    ],
+    
+    # ═══════════════════════════════════════════════════════════
+    # CUET - All Years
+    # ═══════════════════════════════════════════════════════════
+    "cuet 2024": [
+        {"title": "CUET 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cuet-2024/"},
+        {"title": "CUET 2024 Papers PDF", "url": "https://www.selfstudys.com/cuet-ug-2024-question-paper"},
+    ],
+    "cuet 2023": [
+        {"title": "CUET 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cuet-2023/"},
+        {"title": "CUET 2023 Papers PDF", "url": "https://www.selfstudys.com/cuet-ug-2023-question-paper"},
+    ],
+    "cuet 2022": [{"title": "CUET 2022 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cuet-2022/"}],
+    "cuet": [
+        {"title": "CUET All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cuet-question-papers/"},
+        {"title": "CUET Papers PDF", "url": "https://www.selfstudys.com/cuet-ug-question-paper"},
+    ],
+    
+    # ═══════════════════════════════════════════════════════════
+    # NIFT
+    # ═══════════════════════════════════════════════════════════
+    "nift": [
+        {"title": "NIFT Entrance Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nift-question-papers/"},
+        {"title": "NIFT Papers PDF", "url": "https://www.selfstudys.com/nift-question-paper"},
+    ],
+    
+    # ═══════════════════════════════════════════════════════════
+    # DU LLB
+    # ═══════════════════════════════════════════════════════════
+    "du llb": [
+        {"title": "DU LLB Entrance Papers - AglaSem", "url": "https://schools.aglasem.com/tag/du-llb-question-papers/"},
+        {"title": "DU LLB Papers PDF", "url": "https://www.selfstudys.com/du-llb-question-paper"},
+    ],
 }
 
 def get_static_results(query_text: str) -> List[dict]:
-    """Efficiently find best static DB matches – tries specific keys first."""
-    q = query_text.lower()
-    # Prioritize year-specific matches
+    """Super-smart matching: Direct hits, and keyword intersections."""
+    q_clean = query_text.lower().replace("main ", "mains ").strip()
+    q_words = set(q_clean.split())
+    
+    # 1. Exact direct check
+    if q_clean in STATIC_DB: return STATIC_DB[q_clean]
+    
+    # 2. Look for best intersection
+    best_results = []
+    max_score = 0
     for key, data in STATIC_DB.items():
-        if key in q:
-            return data
-    return []
+        key_words = set(key.split())
+        intersection = key_words.intersection(q_words)
+        score = len(intersection)
+        if key_words.issubset(q_words): score += 10 # Perfect meaning
+        
+        if score > max_score and score >= 2:
+            max_score = score
+            best_results = data
+            
+    return best_results
 
-async def search_papers(query_text: str, limit: int = 6) -> List[dict]:
-    """
-    GUARANTEED SEARCH:
-    Layer 1: duckduckgo_search library (works on Render cloud IPs!)
-    Layer 2: Bing HTML scraper (fallback)
-    """
+async def search_papers(query_text: str, limit: int = 6) -> Tuple[List[dict], str]:
+    """Multi-layer search with tracking report."""
     results = []
     seen_urls = set()
-    junk = ["google.com/search", "youtube.com", "facebook.com", "twitter.com", "instagram.com", "quora.com"]
-
-    def add_result(title, url):
-        if url and url.startswith("http") and url not in seen_urls and len(results) < limit:
-            if not any(j in url for j in junk):
-                results.append({"title": (title or query_text)[:80], "url": url})
+    stats = []
+    
+    def add(items, source_id):
+        count = 0
+        for r in items:
+            url = r['url'].split('#')[0]
+            if url not in seen_urls:
+                results.append(r)
                 seen_urls.add(url)
+                count += 1
+        if count > 0: stats.append(f"✅ {source_id}({count})")
+        else: stats.append(f"❌ {source_id}")
 
-    # ─── LAYER 1: duckduckgo_search library (MOST RELIABLE on cloud!) ───
-    try:
-        logger.info(f"[SEARCH] DDGS library lookup: {query_text}")
-        ddg_query = f"{query_text} filetype:pdf OR site:examfare.com OR site:pyq.examgoal.com OR site:aglasem.com OR site:shaalaa.com"
-        loop = asyncio.get_event_loop()
-        ddg_raw = await loop.run_in_executor(
-            None,
-            lambda: list(DDGS().text(ddg_query, max_results=limit + 4))
-        )
-        for r in ddg_raw:
-            add_result(r.get('title', ''), r.get('href', '') or r.get('url', ''))
-        logger.info(f"[SEARCH] DDGS library: {len(results)} results")
-    except Exception as e:
-        logger.warning(f"[SEARCH] DDGS library failed: {e}")
+    # L1: Ecosia
+    try: add(await search_ecosia(query_text, limit=4), "Eco")
+    except: stats.append("⚠️ EcoFail")
+    
+    # L2: Bing
+    if len(results) < 3:
+        try: add(await search_bing(query_text, limit=4), "Bin")
+        except: stats.append("⚠️ BinFail")
+        
+    # L3: DDG HTML
+    if len(results) < 3:
+        try: add(await search_ddg_html(query_text, limit=4), "Ddg")
+        except: stats.append("⚠️ DdgFail")
 
-    # ─── LAYER 2: Bing HTML scraper (fallback) ───
+    # L4: Google
     if len(results) < 2:
-        try:
-            logger.info(f"[SEARCH] Bing scraper fallback: {query_text}")
-            async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(ssl=False)) as sess:
-                bing_results = await search_bing(sess, query_text, limit=8)
-                for r in bing_results:
-                    add_result(r['title'], r['url'])
-            logger.info(f"[SEARCH] Bing: {len(results)} results")
-        except Exception as e:
-            logger.warning(f"[SEARCH] Bing failed: {e}")
+        try: add(await search_google(query_text, limit=4), "Ggl")
+        except: stats.append("⚠️ GglFail")
 
-    return results[:limit]
+    # L5: DDGS Library (Aggressive Fallback)
+    if len(results) < 1:
+        try:
+            loop = asyncio.get_event_loop()
+            raw = await loop.run_in_executor(None, lambda: list(DDGS().text(f"{query_text} pdf", max_results=5)))
+            add([{"title": r.get('title','Result'), "url": r.get('href','')} for r in raw], "Lib")
+        except: stats.append("⚠️ LibFail")
+
+    return results[:limit], " | ".join(stats)
 
 
 async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.DEFAULT_TYPE, depth: int = 0, status_msg=None):
-    """Ultra-Reliable PDF delivery with deep link hunting (Up to 2 levels)."""
-    if depth > 2: return "failed"
-    
+    """Enhanced PDF download with site-specific scrapers and better heuristics."""
+    if depth > 5: return "failed"
     try:
-        session = await get_session()
-        # Quality Headers
+        # ─── SITE-SPECIFIC TRANSFORMATIONS ───
+        original_url = url
+        
+        # SelfStudys Transformation
+        if "selfstudys.com" in url:
+            if "/pdf-viewer/" in url:
+                url = url.replace("/pdf-viewer/", "/download-pdf/").replace(".php", "")
+        
+        # Google Drive Download link
+        if ("drive.google.com" in url or "docs.google.com" in url) and "/d/" in url:
+            try:
+                file_id = url.split("/d/")[1].split("/")[0].split("?")[0]
+                url = f"https://drive.google.com/uc?export=download&id={file_id}"
+            except: pass
+
+        # ─── DOWNLOAD ATTEMPT ───
+        if status_msg and depth <= 1:
+            try:
+                domain = urllib.parse.urlparse(url).netloc[:30]
+                indicator = "🚀 Exploring..." if depth > 0 else "⚡ Connecting..."
+                await status_msg.edit_text(f"**{indicator}**\n📍 `{domain}`", parse_mode="Markdown")
+            except: pass
+
         headers = {
             "User-Agent": random.choice(USER_AGENTS),
-            "Referer": url if depth > 0 else "https://www.google.com/",
-            "Accept-Language": "en-IN,en-US;q=0.9,en;q=0.8",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,application/pdf,*/*;q=0.8",
-            "Connection": "keep-alive",
-            "Upgrade-Insecure-Requests": "1",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Referer": "https://www.google.com/"
         }
         
-        # 0. Early Exit for Google Drive / Docs - Redirect to download link
-        if ("drive.google.com" in url or "docs.google.com" in url):
-            if "/d/" in url:
-                try:
-                    file_id = url.split("/d/")[1].split("/")[0].split("?")[0]
-                    url = f"https://drive.google.com/uc?export=download&id={file_id}"
-                    logger.info(f"🔄 Transformed Google Drive link: {url}")
-                except: pass
-            elif "viewer?url=" in url:
-                try:
-                    parsed = urllib.parse.urlparse(url)
-                    qs = urllib.parse.parse_qs(parsed.query)
-                    if 'url' in qs:
-                        url = qs['url'][0]
-                        if not url.startswith("http"): url = "https://" + url
-                        logger.info(f"🔄 Extracted link from Google Viewer: {url}")
-                except: pass
-
-        # 0b. Handle Search Redirects (e.g. google.com/url?q=...)
-        if "google.com/url" in url:
-            try:
-                parsed = urllib.parse.urlparse(url)
-                qs = urllib.parse.parse_qs(parsed.query)
-                if 'q' in qs:
-                    url = qs['q'][0]
-                    logger.info(f"🔄 Resolved Google redirect: {url}")
-            except: pass
-        
-        # 0c. AglaSem / Site Specific Headers
-        if "aglasem.com" in url:
-             headers["Referer"] = "https://schools.aglasem.com/"
-             
-        # Update status if possible
-        if status_msg:
-            try: 
-                indicator = "🚀 Direct Search..." if depth == 0 else f"🔍 Depth {depth}: Hunting PDF..."
-                await status_msg.edit_text(f"⚡ **{indicator}**\n*Trying:* `{urllib.parse.urlparse(url).netloc[:30]}`", parse_mode="Markdown")
-            except: pass
-
-        async with session.get(url, timeout=35, headers=headers, allow_redirects=True) as response:
-            if response.status != 200: return "failed"
-            ctype = response.headers.get("Content-Type", "").lower()
+        async with primp.AsyncClient(impersonate="chrome_123", follow_redirects=True, verify=False) as client:
+            response = await client.get(url, timeout=35, headers=headers)
             
-            # 1. Direct PDF Check
-            content_preview = await response.content.read(8192)
-            is_pdf = content_preview.startswith(b"%PDF-") or "pdf" in ctype
+            if response.status_code not in [200, 206]:
+                return "failed"
+                
+            ctype = response.headers.get("Content-Type", "").lower()
+            content = response.content
+            
+            # 1. DIRECT PDF DETECTION
+            is_pdf = content.startswith(b"%PDF-") or "pdf" in ctype or (len(content) > 1024 and b"%PDF-" in content[:1024])
             
             if is_pdf:
-                full_content = content_preview
-                async for chunk in response.content.iter_chunked(1024 * 1024):
-                    full_content += chunk
-                    if len(full_content) > 49 * 1024 * 1024: return "large"
+                if len(content) > 48 * 1024 * 1024: return "large"
                 
-                fname = "paper.pdf"
-                cd = response.headers.get("Content-Disposition", "")
-                if 'filename=' in cd: fname = cd.split('filename=')[1].strip('"').strip("'")
-                else:
-                    parts = url.split("/")[-1].split("?")[0]
-                    if parts.lower().endswith(".pdf"): fname = parts
-                    elif len(parts) > 3: fname = f"{parts}.pdf"
+                # Filename logic
+                fname = "Exam_Paper.pdf"
+                for key in ["jee", "neet", "gate", "upsc", "ssc", "board", "cat", "nda", "cds", "cbse"]:
+                    if key in original_url.lower():
+                         fname = f"{key.upper()}_Paper.pdf"
+                         break
                 
                 msg = update.callback_query.message if update.callback_query else update.message
                 await msg.reply_document(
-                    document=io.BytesIO(full_content), filename=fname,
-                    caption=f"✅ **Sent Successfully!**\n🔗 *Fast One-Click Delivery*"
+                    document=io.BytesIO(content),
+                    filename=fname,
+                    caption=f"✅ **Direct Download Success!**\n\n📄 {fname}\n\n_Note: This PDF was extracted directly from the source._"
                 )
                 return "sent"
 
-            # 2. HTML Link Hunting
-            if "html" in ctype:
-                html = content_preview + (await response.content.read())
-                soup = BeautifulSoup(html, 'html.parser')
+            # 2. HTML PAGE - DEEP EXTRACTION
+            if "html" in ctype or "text" in ctype or len(content) < 5000:
+                soup = BeautifulSoup(response.text, 'html.parser')
                 candidates = []
-                for tag in soup.find_all(['a', 'iframe', 'button', 'embed', 'object']):
-                    link = tag.get('href') or tag.get('src') or tag.get('data-url') or tag.get('data-link')
-                    if not link or len(link) < 5 or link.startswith('#') or link.startswith('javascript:'): continue
+                
+                # Check for buttons/links with specific download keywords
+                for a in soup.find_all(['a', 'button'], href=True if soup.name == 'a' else False):
+                    href = a.get('href') if a.name == 'a' else None
+                    if not href: continue
                     
-                    full_link = urllib.parse.urljoin(url, link)
-                    text = tag.get_text().strip().lower()
+                    text = a.get_text(strip=True).lower()
+                    full_href = urllib.parse.urljoin(url, href)
+                    
+                    if full_href == url or full_href.startswith('javascript') or full_href.startswith('#'):
+                        continue
                     
                     score = 0
-                    if full_link.lower().endswith(".pdf"): score += 100
-                    if "pdf" in full_link.lower(): score += 40
-                    if "drive.google.com" in full_link.lower(): score += 50
-                    if "download" in full_link.lower(): score += 10
-                    if "download" in text and ("pdf" in text or "paper" in text): score += 60
-                    if tag.name == "iframe" and "viewer" in full_link.lower(): score += 70
+                    if full_href.lower().endswith('.pdf'): score += 100
+                    if "download pdf" in text: score += 90
+                    if "download" in text: score += 70
+                    if "pdf" in text: score += 50
+                    if "question paper" in text: score += 40
                     
-                    if score > 0 and not any(x in full_link.lower() for x in ["facebook", "twitter", "whatsapp", "telegram"]):
-                        candidates.append((score, full_link))
-
-                unique_cands = []
-                seen = set()
-                for s, l in sorted(candidates, key=lambda x: x[0], reverse=True):
-                    if l not in seen:
-                        unique_cands.append((s, l))
-                        seen.add(l)
+                    # Site specific weight
+                    if "selfstudys.com" in full_href and "download" in full_href: score += 30
+                    if "aglasem.com" in full_href and "pdf" in full_href: score += 30
+                    
+                    if score > 35:
+                        candidates.append((score, full_href))
                 
-                max_cands = 10 if depth == 0 else 3
-                for _, cand in unique_cands[:max_cands]:
+                # Look for iframes (Google Drive viewers, etc)
+                for iframe in soup.find_all('iframe', src=True):
+                    src = iframe.get('src')
+                    full_src = urllib.parse.urljoin(url, src)
+                    if "pdf" in full_src.lower() or "drive.google.com" in full_src:
+                        candidates.append((85, full_src))
+
+                # Sort and try recursively
+                candidates.sort(key=lambda x: x[0], reverse=True)
+                seen_cands = {url, original_url}
+                for _, cand in candidates[:5]:
+                    if cand in seen_cands: continue
+                    seen_cands.add(cand)
+                    
                     res = await download_and_send_pdf(cand, update, context, depth + 1, status_msg)
-                    if res != "failed": return res
+                    if res == "sent": return "sent"
+                    if res == "large": return "large"
+
     except Exception as e:
-        logger.error(f"Download Error at depth {depth} ({url}): {e}")
+        logger.error(f"Download handle error for {url}: {e}")
+    
     return "failed"
 
 
@@ -549,7 +999,11 @@ async def year_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer("Fetching results...")
     parts = query.data.split("_")
-    cat_name, exam_name, year = parts[1], parts[2], parts[3]
+    cat_key = parts[1]
+    exam_key = parts[2]
+    year = parts[3]
+    cat_name = cat_key.replace("_", " ")
+    exam_name = exam_key.replace("_", " ")
 
     await query.edit_message_text(f"⚡ **Searching {exam_name} ({year})...**", parse_mode="Markdown")
     await context.bot.send_chat_action(chat_id=query.message.chat_id, action="typing")
@@ -587,6 +1041,7 @@ async def year_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "CLAT":           "clat",
         "NIFT":           "nift",
         "CUET":           "cuet",
+        "DU LLB":         "du llb",
     }
 
     results = []
@@ -610,54 +1065,52 @@ async def year_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         add(res['title'], res['url'])
 
     # 3. IF NO STATIC DB MATCH, OR FOR "OLDER" PAPERS, FALLBACK TO SEARCH
+    search_stats = ""
     if not results or year == "Older" or len(results) < 2:
-        category_exams = EXAM_CATEGORIES.get(cat_name, {})
-        base_query = category_exams.get(exam_name, f"{exam_name} Previous Year Paper")
-        year_str = "" if year == "Older" else year
-        final_query = f"{exam_name} {year_str} question paper pdf".strip()
-        live_res = await search_papers(final_query, limit=5-len(results))
-        for r in live_res:
-            add(r['title'], r['url'])
+        final_query = f"{exam_name} {year if year != 'Older' else ''} question paper pdf".strip()
+        live_res, search_stats = await search_papers(final_query, limit=5-len(results))
+        for r in live_res: add(r['title'], r['url'])
+
+    footer = "\n\n---\n🤖 **ExamBot v12.0** | ⚡ `Stable-Push`"
 
     if not results:
-        await query.edit_message_text(
-            f"❌ **No results found for {exam_name} ({year}).**\n\nTry another year or browse /start.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back Selection", callback_data=f"exam_{cat_name}_{exam_name}")]]))
+        report = f"❌ **No results found for {exam_name} ({year}).**"
+        if search_stats: report += f"\n\n🔎 Diagnostics: `{search_stats}`"
+        await query.edit_message_text(report + footer, parse_mode="Markdown", 
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back", callback_data=f"exam_{cat_key}_{exam_key}")]]))
         return
 
-    # ────── ONE-CLICK DIRECT DOWNLOAD EXPERIENCE ──────
+    # ────── ONE-CLICK AUTOMATED DOWNLOAD PROGRESSION ──────
     context.user_data['last_results'] = results
+    diag_info = f"\n📦 `Sources: {search_stats}`" if search_stats else ""
     
     wait_msg = await query.edit_message_text(
         f"🎯 **Year: {year} | Exam: {exam_name}**\n\n"
-        f"🚀 **Starting One-Click Direct Download...**\n"
-        f"Please wait while I fetch the best PDF for you.",
+        f"🚀 **Starting One-Click Auto-Download...**\n"
+        f"Hunting for the best match in our database...{diag_info}",
         parse_mode="Markdown"
     )
 
-    # Automatically attempt download of top result
-    status = await download_and_send_pdf(results[0]['url'], update, context, 0, wait_msg)
+    # ─── AUTO-TRY MULTIPLE RESULTS ───
+    status = "failed"
+    best_results = results[:3] 
+    for i, res in enumerate(best_results):
+        status = await download_and_send_pdf(res['url'], update, context, 0, wait_msg)
+        if status == "sent": break
     
     if status == "sent":
-        response = f"✅ **PDF Sent!**\n\nI found the best match for **{exam_name} ({year})** and delivered it above.\n\nNeed more versions or different shifts?"
-        keyboard = []
-        for i, res in enumerate(results):
-            keyboard.append([InlineKeyboardButton(f"📥 Version {i+1}", callback_data=f"dl_{i}")])
-        keyboard.append([InlineKeyboardButton("🔙 Back to years", callback_data=f"exam_{cat_name}_{exam_name}")])
-        try: await wait_msg.edit_text(response, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
-        except: pass
-        return
+        response = f"✅ **PDF Sent!**\n\nSuccessfully delivered the best match for **{exam_name} ({year})**."
+    else:
+        response = f"📚 **Results for {exam_name} ({year}):**\n\n⚠️ *Auto-download failed. Try manually:* \n"
 
-    # Fallback if auto-download failed
-    response = f"📚 **{exam_name} Results ({year}):**\n\n"
-    response += "⚠️ *Auto-download failed. Please try these links:* \n\n"
     keyboard = []
     for i, res in enumerate(results):
-        response += f"📄 {i+1}. **{res['title']}**\n"
-        keyboard.append([InlineKeyboardButton(f"📥 Download PDF {i+1}", callback_data=f"dl_{i}")])
+        if not status == "sent": response += f"📄 {i+1}. **{res['title']}**\n"
+        keyboard.append([InlineKeyboardButton(f"📥 Download V{i+1}", callback_data=f"dl_{i}")])
+    keyboard.append([InlineKeyboardButton("🔙 Back", callback_data=f"exam_{cat_key}_{exam_key}")])
     
-    keyboard.append([InlineKeyboardButton("🔙 Back to years", callback_data=f"exam_{cat_name}_{exam_name}")])
-    await wait_msg.edit_text(response, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    try: await wait_msg.edit_text(response + footer, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    except: pass
 
 async def direct_search_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Explains how to use direct search when the button is clicked."""
@@ -697,24 +1150,55 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # 3. Proceed with search for relevant queries
-    # Show typing indicator
     await context.bot.send_chat_action(chat_id=update.message.chat_id, action="typing")
     status_msg = await update.message.reply_text(f"🔍 **Searching for:** *{query_text}*", parse_mode="Markdown")
-    results = await search_papers(f"{query_text}", limit=8)
     
+    # ─── A: CHECK STATIC DB FIRST ───
+    static_results = get_static_results(query_text)
+    
+    # ─── B: DO LIVE SEARCH ───
+    live_results, search_stats = await search_papers(query_text, limit=6)
+    
+    # Merge results
+    results = []
+    seen_urls = set()
+    for res in static_results + live_results:
+        if res['url'] not in seen_urls:
+            results.append(res)
+            seen_urls.add(res['url'])
+
+    footer = "\n\n---\n🤖 **ExamBot v12.0** | ⚡ `Stable-Push`"
+
     if not results:
-        await status_msg.edit_text("❌ **No results found.** Please use the /start menu to browse categorized exams.")
+        report = f"❌ **No results found.**\n\n🔎 Diagnostics: `{search_stats}`" if search_stats else "❌ **No results found.**"
+        await status_msg.edit_text(report + footer, parse_mode="Markdown")
         return
 
-    # Hide raw URLs for a cleaner experience
-    response = f"📚 **Search Results for: {query_text}**\n\n"
+    # ─── AUTOMATED DOWNLOAD FROM SEARCH ───
+    wait_msg = status_msg
+    diag_info = f"\n📦 `Sources: {search_stats}`" if search_stats else ""
+    try: await wait_msg.edit_text(f"🎯 **Found results for: {query_text}**\n🚀 **Attempting Auto-Download...**{diag_info}", parse_mode="Markdown")
+    except: pass
+    
+    status = "failed"
+    best_results = results[:2] 
+    for i, res in enumerate(best_results):
+        status = await download_and_send_pdf(res['url'], update, context, 0, wait_msg)
+        if status == "sent": break
+
+    if status == "sent":
+        response = f"✅ **PDF Sent!**\n\nI found the best match for **{query_text}**.\nIf this isn't correct, check variants below:"
+    else:
+        response = f"📚 **Search Results for: {query_text}**\n\n⚠️ *Auto-download failed. Try manually:* \n"
+
     keyboard = []
     for i, res in enumerate(results):
-        response += f"📄 {i+1}. **{res['title']}**\n"
-        keyboard.append([InlineKeyboardButton(f"📥 One-Click Download {i+1}", callback_data=f"dl_{i}")])
+        if not status == "sent": response += f"📄 {i+1}. **{res['title']}**\n"
+        keyboard.append([InlineKeyboardButton(f"📥 Download V{i+1}", callback_data=f"dl_{i}")])
     
     context.user_data['last_results'] = results
-    await status_msg.edit_text(response, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    try: await wait_msg.edit_text(response + footer, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
+    except: pass
 
 async def download_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Refined download handler with informative errors."""
@@ -781,50 +1265,50 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(help_msg, parse_mode="Markdown")
 
 async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Tests all search engines and reports results directly in chat."""
-    msg = await update.message.reply_text("🔬 **Running search diagnostics...**", parse_mode="Markdown")
-    report = ["🔬 **Search Engine Diagnostic Report**\n"]
-    test_query = "JEE Mains 2023 question paper"
-    report.append(f"📋 Test query: `{test_query}`\n")
+    """Tests all 5 search engines and reports results directly in chat."""
+    msg = await update.message.reply_text("🔬 **Running 5-Layer Search Diagnostics...**", parse_mode="Markdown")
+    report = ["🔬 **Multi-Layer Search Report**\n"]
+    test_query = "JEE Mains 2024 paper"
+    report.append(f"📋 Query: `{test_query}`\n")
 
-    # Test SearXNG
+    # 1. Ecosia
     try:
-        session = await get_session()
-        params = urllib.parse.urlencode({"q": test_query + " pdf", "format": "json", "categories": "general"})
-        async with session.get(f"https://searx.be/search?{params}", headers={"Accept": "application/json"}, timeout=8) as resp:
-            data = await resp.json(content_type=None)
-            count = len(data.get("results", []))
-            report.append(f"{'✅' if count > 0 else '❌'} SearXNG (searx.be): {count} results")
-    except Exception as e:
-        report.append(f"❌ SearXNG: {str(e)[:60]}")
+        res = await search_ecosia(test_query, limit=3)
+        report.append(f"{'✅' if res else '❌'} Layer 1 (Ecosia): {len(res)} results")
+    except Exception as e: report.append(f"❌ Ecosia Error: {str(e)[:40]}")
 
-    # Test DDG
+    # 2. Bing
     try:
-        session = await get_session()
-        async with session.get(f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(test_query)}", timeout=8) as resp:
-            report.append(f"{'✅' if resp.status == 200 else '❌'} DDG HTML: status {resp.status}")
-    except Exception as e:
-        report.append(f"❌ DDG: {str(e)[:60]}")
+        res = await search_bing(test_query, limit=3)
+        report.append(f"{'✅' if res else '❌'} Layer 2 (Bing): {len(res)} results")
+    except Exception as e: report.append(f"❌ Bing Error: {str(e)[:40]}")
 
-    # Test Bing
+    # 3. DDG HTML
     try:
-        session = await get_session()
-        async with session.get(f"https://www.bing.com/search?q={urllib.parse.quote(test_query)}", headers={"User-Agent": "Mozilla/5.0"}, timeout=8) as resp:
-            soup = BeautifulSoup(await resp.text(), 'html.parser')
-            links = soup.select('h2 a')
-            report.append(f"{'✅' if links else '❌'} Bing: {len(links)} links found (status {resp.status})")
-    except Exception as e:
-        report.append(f"❌ Bing: {str(e)[:60]}")
+        res = await search_ddg_html(test_query, limit=3)
+        report.append(f"{'✅' if res else '❌'} Layer 3 (DDG): {len(res)} results")
+    except Exception as e: report.append(f"❌ DDG Error: {str(e)[:40]}")
 
-    # Test Static DB
+    # 4. Google
+    try:
+        res = await search_google(test_query, limit=3)
+        report.append(f"{'✅' if res else '❌'} Layer 4 (Google): {len(res)} results")
+    except Exception as e: report.append(f"❌ Google Error: {str(e)[:40]}")
+
+    # 5. DDGS
+    try:
+        loop = asyncio.get_event_loop()
+        res = await loop.run_in_executor(None, lambda: list(DDGS().text(test_query, max_results=3)))
+        report.append(f"{'✅' if res else '❌'} Layer 5 (DDGS): {len(res)} results")
+    except Exception as e: report.append(f"❌ DDGS Error: {str(e)[:40]}")
+
+    # 6. Static DB
     try:
         res = get_static_results("jee mains 2024")
-        report.append(f"{'✅' if res else '❌'} Static DB: {len(res)} entries matched")
-    except Exception as e:
-        report.append(f"❌ Static DB: {str(e)[:60]}")
+        report.append(f"{'✅' if res else '❌'} Static DB Check: {len(res)} items")
+    except Exception as e: report.append(f"❌ Static DB Error: {str(e)[:40]}")
 
-    full_report = "\n".join(report)
-    await msg.edit_text(full_report, parse_mode="Markdown")
+    await msg.edit_text("\n".join(report), parse_mode="Markdown")
 
 def main():
     logger.info("🚀 Starting Bot Application v11.0 LIVE Premium (Cloud Ready)...")
@@ -838,10 +1322,6 @@ def main():
     
     def run_cloud_keep_alive():
         from http.server import HTTPServer, BaseHTTPRequestHandler
-        import time
-        import threading
-        import requests 
-        
         class HealthCheck(BaseHTTPRequestHandler):
             def do_GET(self):
                 self.send_response(200)
@@ -852,6 +1332,27 @@ def main():
             def log_message(self, format, *args):
                 pass 
 
+        def ping_self():
+            import time
+            import requests
+            # Derive URL from SPACE_ID on Hugging Face
+            space_id = os.environ.get("SPACE_ID")
+            default_url = f"https://{space_id.replace('/', '-')}.hf.space" if space_id else "https://ayush447-exam-assistant-bot.hf.space"
+            url = os.environ.get("SELF_URL") or default_url
+            
+            logger.info(f"📡 Self-ping started for: {url}")
+            time.sleep(30) # Initial delay for server start
+            while True:
+                try:
+                    # Just hit the health endpoint
+                    requests.get(url, timeout=10)
+                    logger.info("📡 Self-ping: OK")
+                except Exception as e:
+                    logger.warning(f"📡 Self-ping failed: {e}")
+                time.sleep(600) # Ping every 10 min
+
+        threading.Thread(target=ping_self, daemon=True).start()
+
         try:
             httpd = HTTPServer(('0.0.0.0', PORT), HealthCheck)
             logger.info(f"✅ Cloud Health Server listening on port {PORT}")
@@ -860,7 +1361,6 @@ def main():
             logger.error(f"❌ Health-Check Server error: {e}")
 
     # Launch health check in background thread
-    import threading
     threading.Thread(target=run_cloud_keep_alive, daemon=True).start()
 
     # Build bot application
@@ -881,9 +1381,6 @@ def main():
     # START THE BOT
     logger.info(f"📡 PRODUCTION: Using Stable Polling (Health server on port {PORT})")
     application.run_polling()
-
-if __name__ == "__main__":
-    main()
 
 if __name__ == "__main__":
     main()
