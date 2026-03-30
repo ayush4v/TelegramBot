@@ -3,6 +3,7 @@ import logging
 import os
 import io
 import aiohttp
+import random
 from typing import List, Dict, Tuple
 
 from dotenv import load_dotenv
@@ -23,6 +24,8 @@ import threading
 import requests
 import time
 import primp
+from ddg_search import duckduckgo_search_pdfs
+import re
 
 # Load variables from .env or .env.token
 if os.path.exists(".env"):
@@ -39,7 +42,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Constants
-BOT_VERSION = "v12.4 Final-Stable"
+BOT_VERSION = "v12.5 Ultimate"
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 print(f"DEBUG: EXECUTION REACHED MAIN.PY - VERSION {BOT_VERSION}")
 logger.info(f"🛠 Loading ExamBot {BOT_VERSION}...")
@@ -182,7 +185,8 @@ async def search_ecosia(query: str, limit: int = 5) -> List[dict]:
     results = []
     try:
         async with primp.AsyncClient(impersonate=random.choice(IMPERSONATES)) as client:
-            encoded_q = urllib.parse.quote(f"{query} pdf")
+            # Added filetype:pdf for direct results
+            encoded_q = urllib.parse.quote(f"{query} filetype:pdf")
             url = f"https://www.ecosia.org/search?q={encoded_q}"
             headers = {"User-Agent": random.choice(USER_AGENTS)}
             
@@ -204,7 +208,8 @@ async def search_google(query: str, limit: int = 5) -> List[dict]:
     results = []
     try:
         async with primp.AsyncClient(impersonate=random.choice(IMPERSONATES)) as client:
-            encoded_q = urllib.parse.quote(f"{query} pdf")
+            # Added filetype:pdf for direct results
+            encoded_q = urllib.parse.quote(f"{query} filetype:pdf")
             url = f"https://www.google.com/search?q={encoded_q}&num=10"
             headers = {"User-Agent": random.choice(USER_AGENTS)}
             
@@ -231,7 +236,8 @@ async def search_bing(query: str, limit: int = 8) -> List[dict]:
     results = []
     try:
         async with primp.AsyncClient(impersonate=random.choice(IMPERSONATES)) as client:
-            encoded_q = urllib.parse.quote(f"{query} pdf")
+            # Added filetype:pdf for direct results
+            encoded_q = urllib.parse.quote(f"{query} filetype:pdf")
             url = f"https://www.bing.com/search?q={encoded_q}&count=15"
             headers = {"User-Agent": random.choice(USER_AGENTS)}
             
@@ -255,7 +261,8 @@ async def search_ddg_html(query: str, limit: int = 8) -> List[dict]:
     results = []
     try:
         async with primp.AsyncClient(impersonate=random.choice(IMPERSONATES)) as client:
-            encoded_q = urllib.parse.quote(f"{query} pdf")
+            # Added filetype:pdf for direct results
+            encoded_q = urllib.parse.quote(f"{query} filetype:pdf")
             url = f"https://html.duckduckgo.com/html/?q={encoded_q}"
             headers = {"User-Agent": random.choice(USER_AGENTS)}
             
@@ -841,16 +848,21 @@ async def search_papers(query_text: str, limit: int = 6) -> Tuple[List[dict], st
         if count > 0: stats.append(f"✅ {source_id}({count})")
         else: stats.append(f"❌ {source_id}")
 
-    # L1: Ecosia
-    try: add(await search_ecosia(query_text, limit=4), "Eco")
-    except: stats.append("⚠️ EcoFail")
+    # L1: Resilient Multi-Layer (Custom Lib + filetype:pdf)
+    try: add(await duckduckgo_search_pdfs(query_text, limit=6), "Res")
+    except: stats.append("⚠️ ResFail")
+
+    # L2: Ecosia
+    if len(results) < 4:
+        try: add(await search_ecosia(query_text, limit=4), "Eco")
+        except: stats.append("⚠️ EcoFail")
     
-    # L2: Bing
-    if len(results) < 3:
+    # L3: Bing
+    if len(results) < 4:
         try: add(await search_bing(query_text, limit=4), "Bin")
         except: stats.append("⚠️ BinFail")
         
-    # L3: DDG HTML
+    # L4: DDG HTML
     if len(results) < 3:
         try: add(await search_ddg_html(query_text, limit=4), "Ddg")
         except: stats.append("⚠️ DdgFail")
@@ -861,12 +873,21 @@ async def search_papers(query_text: str, limit: int = 6) -> Tuple[List[dict], st
         except: stats.append("⚠️ GglFail")
 
     # L5: DDGS Library (Aggressive Fallback)
-    if len(results) < 1:
+    if len(results) < 2:
         try:
             loop = asyncio.get_event_loop()
             raw = await loop.run_in_executor(None, lambda: list(DDGS().text(f"{query_text} pdf", max_results=5)))
             add([{"title": r.get('title','Result'), "url": r.get('href','')} for r in raw], "Lib")
         except: stats.append("⚠️ LibFail")
+
+    # L6: FINAL DESPERATE FALLBACK (No filetype restriction)
+    if len(results) < 1:
+        try:
+            # Search without filetype for broad matching
+            loop = asyncio.get_event_loop()
+            raw_broad = await loop.run_in_executor(None, lambda: list(DDGS().text(query_text, max_results=5)))
+            add([{"title": r.get('title','Result'), "url": r.get('href','')} for r in raw_broad], "Broad")
+        except: stats.append("⚠️ BroadFail")
 
     return results[:limit], " | ".join(stats)
 
@@ -900,8 +921,9 @@ async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.
 
         headers = {
             "User-Agent": random.choice(USER_AGENTS),
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Referer": "https://www.google.com/"
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+            "Referer": "https://www.google.com/",
+            "Accept-Language": "en-US,en;q=0.9",
         }
         
         async with primp.AsyncClient(impersonate="chrome_123", follow_redirects=True, verify=False) as client:
@@ -939,45 +961,76 @@ async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.
                 soup = BeautifulSoup(response.text, 'html.parser')
                 candidates = []
                 
-                # Check for buttons/links with specific download keywords
-                for a in soup.find_all(['a', 'button'], href=True if soup.name == 'a' else False):
-                    href = a.get('href') if a.name == 'a' else None
+                # Check ALL elements for potential PDF links
+                for tag in soup.find_all(['a', 'button', 'iframe', 'embed']):
+                    href = tag.get('href') or tag.get('src') or tag.get('data-src') or tag.get('onclick')
+                    if not href:
+                        # Check inside for a link (common wrapper pattern)
+                        inner = tag.find('a')
+                        if inner: href = inner.get('href')
+                    
                     if not href: continue
                     
-                    text = a.get_text(strip=True).lower()
-                    full_href = urllib.parse.urljoin(url, href)
+                    # Clean the href (handle JS onclick)
+                    href = str(href)
+                    if "window.location" in href or "window.open" in href:
+                        try:
+                            # Extract link from single or double quotes
+                            match = re.search(r"['\"](https?://[^'\"]+)['\"]", href)
+                            if match: href = match.group(1)
+                            else:
+                                match = re.search(r"['\"](/[^'\"]+)['\"]", href)
+                                if match: href = match.group(1)
+                        except: pass
                     
-                    if full_href == url or full_href.startswith('javascript') or full_href.startswith('#'):
+                    if not (href.startswith('http') or href.startswith('/') or href.startswith('.')):
+                        continue
+                        
+                    full_href = urllib.parse.urljoin(url, href)
+                    text = tag.get_text(strip=True).lower()
+                    
+                    if full_href == url or "javascript" in full_href.lower() or full_href.startswith('#'):
                         continue
                     
                     score = 0
-                    if full_href.lower().endswith('.pdf'): score += 100
-                    if "download pdf" in text: score += 90
-                    if "download" in text: score += 70
-                    if "pdf" in text: score += 50
-                    if "question paper" in text: score += 40
+                    h_low = full_href.lower()
+                    if h_low.endswith('.pdf'): score += 120
+                    if "download pdf" in text: score += 100
+                    if "click here" in text: score += 90
+                    if "download" in text: score += 80
+                    if "pdf" in text: score += 70
+                    if "open" in text or "view" in text: score += 60
+                    if "question paper" in text: score += 50
+                    if "drive.google.com" in full_href: score += 100
                     
                     # Site specific weight
-                    if "selfstudys.com" in full_href and "download" in full_href: score += 30
-                    if "aglasem.com" in full_href and "pdf" in full_href: score += 30
+                    if "selfstudys.com" in full_href and "download" in h_low: score += 40
+                    if "aglasem.com" in full_href and "pdf" in h_low: score += 40
                     
-                    if score > 35:
+                    if score > 40:
                         candidates.append((score, full_href))
                 
-                # Look for iframes (Google Drive viewers, etc)
-                for iframe in soup.find_all('iframe', src=True):
-                    src = iframe.get('src')
-                    full_src = urllib.parse.urljoin(url, src)
-                    if "pdf" in full_src.lower() or "drive.google.com" in full_src:
-                        candidates.append((85, full_src))
+                # SCRIPT TAG ANALYSIS (Find links hidden in JS)
+                import re
+                for script in soup.find_all('script'):
+                    content_str = script.string
+                    if content_str and (".pdf" in content_str or "drive.google.com" in content_str):
+                        urls = re.findall(r'https?://[^\s\"\'<>]+', content_str)
+                        for u in urls:
+                            if ".pdf" in u.lower() or "drive.google.com" in u.lower():
+                                candidates.append((110, u))
 
                 # Sort and try recursively
                 candidates.sort(key=lambda x: x[0], reverse=True)
                 seen_cands = {url, original_url}
-                for _, cand in candidates[:5]:
-                    if cand in seen_cands: continue
-                    seen_cands.add(cand)
-                    
+                unique_candidates = []
+                for _, cand in candidates:
+                    if cand not in seen_cands:
+                        unique_candidates.append(cand)
+                        seen_cands.add(cand)
+
+                # Try the top 8 candidates (increased breadth)
+                for cand in unique_candidates[:8]:
                     res = await download_and_send_pdf(cand, update, context, depth + 1, status_msg)
                     if res == "sent": return "sent"
                     if res == "large": return "large"
