@@ -42,7 +42,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Constants
-BOT_VERSION = "v12.5 Ultimate"
+BOT_VERSION = "v12.7 Super-Hunter"
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 print(f"DEBUG: EXECUTION REACHED MAIN.PY - VERSION {BOT_VERSION}")
 logger.info(f"🛠 Loading ExamBot {BOT_VERSION}...")
@@ -831,14 +831,15 @@ def get_static_results(query_text: str) -> List[dict]:
             
     return best_results
 
-async def search_papers(query_text: str, limit: int = 6) -> Tuple[List[dict], str]:
-    """Multi-layer search with tracking report."""
+async def search_papers(query_text: str, limit: int = 8) -> Tuple[List[dict], str]:
+    """Super-Hunter multi-layer search with query expansion."""
     results = []
     seen_urls = set()
     stats = []
     
     def add(items, source_id):
         count = 0
+        if not items: return
         for r in items:
             url = r['url'].split('#')[0]
             if url not in seen_urls:
@@ -848,44 +849,41 @@ async def search_papers(query_text: str, limit: int = 6) -> Tuple[List[dict], st
         if count > 0: stats.append(f"✅ {source_id}({count})")
         else: stats.append(f"❌ {source_id}")
 
-    # L1: Resilient Multi-Layer (Custom Lib + filetype:pdf)
+    # --- Q1: HIGH-PRECISION PDF (Standard Operators) ---
+    q_pdf = f"{query_text} filetype:pdf"
     try: add(await duckduckgo_search_pdfs(query_text, limit=6), "Res")
     except: stats.append("⚠️ ResFail")
+    
+    # --- Q2: SITE-SPECIFIC HUNTER (Targets top Indian edu-sites) ---
+    if len(results) < 5:
+        q_sites = f"{query_text} (site:aglasem.com OR site:selfstudys.com OR site:careers360.com OR site:collegedunia.com)"
+        try: add(await search_ddg_html(query_text, limit=4), "Sites")
+        except: pass
 
     # L2: Ecosia
-    if len(results) < 4:
+    if len(results) < 6:
         try: add(await search_ecosia(query_text, limit=4), "Eco")
         except: stats.append("⚠️ EcoFail")
     
     # L3: Bing
-    if len(results) < 4:
+    if len(results) < 6:
         try: add(await search_bing(query_text, limit=4), "Bin")
         except: stats.append("⚠️ BinFail")
         
-    # L4: DDG HTML
-    if len(results) < 3:
-        try: add(await search_ddg_html(query_text, limit=4), "Ddg")
-        except: stats.append("⚠️ DdgFail")
-
-    # L4: Google
-    if len(results) < 2:
-        try: add(await search_google(query_text, limit=4), "Ggl")
-        except: stats.append("⚠️ GglFail")
-
     # L5: DDGS Library (Aggressive Fallback)
-    if len(results) < 2:
+    if len(results) < 3:
         try:
             loop = asyncio.get_event_loop()
-            raw = await loop.run_in_executor(None, lambda: list(DDGS().text(f"{query_text} pdf", max_results=5)))
+            raw = await loop.run_in_executor(None, lambda: list(DDGS().text(f"{query_text} paper pdf", max_results=5)))
             add([{"title": r.get('title','Result'), "url": r.get('href','')} for r in raw], "Lib")
         except: stats.append("⚠️ LibFail")
 
-    # L6: FINAL DESPERATE FALLBACK (No filetype restriction)
-    if len(results) < 1:
+    # L6: LAST-RESORT BROAD SEARCH
+    if len(results) < 2:
         try:
-            # Search without filetype for broad matching
             loop = asyncio.get_event_loop()
-            raw_broad = await loop.run_in_executor(None, lambda: list(DDGS().text(query_text, max_results=5)))
+            # Totally broaden the search
+            raw_broad = await loop.run_in_executor(None, lambda: list(DDGS().text(query_text, max_results=8)))
             add([{"title": r.get('title','Result'), "url": r.get('href','')} for r in raw_broad], "Broad")
         except: stats.append("⚠️ BroadFail")
 
