@@ -42,7 +42,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Constants
-BOT_VERSION = "v12.8 Ultimate-Bypass"
+BOT_VERSION = "v13.0 Final-Bypass"
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 print(f"DEBUG: EXECUTION REACHED MAIN.PY - VERSION {BOT_VERSION}")
 logger.info(f"🛠 Loading ExamBot {BOT_VERSION}...")
@@ -924,13 +924,14 @@ async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.
 
         # Use the provided persistent session
         headers = {
-            "User-Agent": random.choice(USER_AGENTS),
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-            "Referer": original_url, # Dynamic Referer
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Referer": original_url,
             "Accept-Language": "en-US,en;q=0.9",
         }
         
-        response = await client.get(url, timeout=30, headers=headers)
+        # User-Agent is handled by primp's impersonate profile to ensure JA3 match
+        response = await client.get(url, timeout=45, headers=headers)
         if response.status_code not in [200, 201, 206]: return "failed"
             
         ctype = response.headers.get("Content-Type", "").lower()
