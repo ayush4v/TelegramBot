@@ -42,7 +42,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Constants
-BOT_VERSION = "v12.7 Super-Hunter"
+BOT_VERSION = "v12.8 Ultimate-Bypass"
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 print(f"DEBUG: EXECUTION REACHED MAIN.PY - VERSION {BOT_VERSION}")
 logger.info(f"🛠 Loading ExamBot {BOT_VERSION}...")
@@ -890,155 +890,124 @@ async def search_papers(query_text: str, limit: int = 8) -> Tuple[List[dict], st
     return results[:limit], " | ".join(stats)
 
 
-async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.DEFAULT_TYPE, depth: int = 0, status_msg=None):
-    """Enhanced PDF download with site-specific scrapers and better heuristics."""
-    if depth > 5: return "failed"
+async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.DEFAULT_TYPE, depth: int = 0, status_msg=None, client=None):
+    """Ultimate-Bypass PDF downloader with persistent session and cookie support."""
+    if depth > 6: return "failed"
+    
+    # Internal cleanup for URL
+    url = url.strip().split('#')[0]
+    
+    # ─── SITE-SPECIFIC TRANSFORMATIONS ───
+    original_url = url
+    if "selfstudys.com" in url and "/pdf-viewer/" in url:
+        url = url.replace("/pdf-viewer/", "/download-pdf/").replace(".php", "")
+    
+    if ("drive.google.com" in url or "docs.google.com" in url) and "/d/" in url:
+        try:
+            file_id = url.split("/d/")[1].split("/")[0].split("?")[0]
+            url = f"https://drive.google.com/uc?export=download&id={file_id}"
+        except: pass
+
+    # ─── PROGRESS UPDATE ───
+    if status_msg and depth <= 1:
+        try:
+            domain = urllib.parse.urlparse(url).netloc[:30]
+            indicator = f"🚀 Hunter Depth {depth}..." if depth > 0 else "⚡ Initiating Bypass..."
+            await status_msg.edit_text(f"**{indicator}**\n📍 `{domain}`", parse_mode="Markdown")
+        except: pass
+
     try:
-        # ─── SITE-SPECIFIC TRANSFORMATIONS ───
-        original_url = url
-        
-        # SelfStudys Transformation
-        if "selfstudys.com" in url:
-            if "/pdf-viewer/" in url:
-                url = url.replace("/pdf-viewer/", "/download-pdf/").replace(".php", "")
-        
-        # Google Drive Download link
-        if ("drive.google.com" in url or "docs.google.com" in url) and "/d/" in url:
-            try:
-                file_id = url.split("/d/")[1].split("/")[0].split("?")[0]
-                url = f"https://drive.google.com/uc?export=download&id={file_id}"
-            except: pass
+        # Create a session if not provided (top-level call)
+        if client is None:
+            async with primp.AsyncClient(impersonate="chrome_110", follow_redirects=True, verify=False) as session:
+                return await download_and_send_pdf(url, update, context, depth, status_msg, client=session)
 
-        # ─── DOWNLOAD ATTEMPT ───
-        if status_msg and depth <= 1:
-            try:
-                domain = urllib.parse.urlparse(url).netloc[:30]
-                indicator = "🚀 Exploring..." if depth > 0 else "⚡ Connecting..."
-                await status_msg.edit_text(f"**{indicator}**\n📍 `{domain}`", parse_mode="Markdown")
-            except: pass
-
+        # Use the provided persistent session
         headers = {
             "User-Agent": random.choice(USER_AGENTS),
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
-            "Referer": "https://www.google.com/",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Referer": original_url, # Dynamic Referer
             "Accept-Language": "en-US,en;q=0.9",
         }
         
-        async with primp.AsyncClient(impersonate="chrome_123", follow_redirects=True, verify=False) as client:
-            response = await client.get(url, timeout=35, headers=headers)
+        response = await client.get(url, timeout=30, headers=headers)
+        if response.status_code not in [200, 201, 206]: return "failed"
             
-            if response.status_code not in [200, 206]:
-                return "failed"
-                
-            ctype = response.headers.get("Content-Type", "").lower()
-            content = response.content
+        ctype = response.headers.get("Content-Type", "").lower()
+        content = response.content
+        
+        # 1. DIRECT PDF DETECTION
+        is_pdf = content.startswith(b"%PDF-") or "pdf" in ctype or (len(content) > 1024 and b"%PDF-" in content[:1024])
+        
+        if is_pdf:
+            if len(content) > 49 * 1024 * 1024: return "large"
+            fname = "Exam_Paper.pdf"
+            for key in ["jee", "neet", "gate", "upsc", "ssc", "board", "cat", "nda", "cbse"]:
+                if key in original_url.lower():
+                     fname = f"{key.upper()}_Paper.pdf"
+                     break
             
-            # 1. DIRECT PDF DETECTION
-            is_pdf = content.startswith(b"%PDF-") or "pdf" in ctype or (len(content) > 1024 and b"%PDF-" in content[:1024])
-            
-            if is_pdf:
-                if len(content) > 48 * 1024 * 1024: return "large"
-                
-                # Filename logic
-                fname = "Exam_Paper.pdf"
-                for key in ["jee", "neet", "gate", "upsc", "ssc", "board", "cat", "nda", "cds", "cbse"]:
-                    if key in original_url.lower():
-                         fname = f"{key.upper()}_Paper.pdf"
-                         break
-                
-                msg = update.callback_query.message if update.callback_query else update.message
-                await msg.reply_document(
-                    document=io.BytesIO(content),
-                    filename=fname,
-                    caption=f"✅ **Direct Download Success!**\n\n📄 {fname}\n\n_Note: This PDF was extracted directly from the source._"
-                )
-                return "sent"
+            msg = update.callback_query.message if update.callback_query else update.message
+            await msg.reply_document(document=io.BytesIO(content), filename=fname,
+                caption=f"✅ **Bypass Success!**\n\n📄 {fname}\n\n_Note: Paper delivered via Super-Hunter v12.8_")
+            return "sent"
 
-            # 2. HTML PAGE - DEEP EXTRACTION
-            if "html" in ctype or "text" in ctype or len(content) < 5000:
-                soup = BeautifulSoup(response.text, 'html.parser')
-                candidates = []
+        # 2. HTML PAGE - DEEP EXTRACTION
+        if "html" in ctype or "text" in ctype or len(content) < 8000:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            candidates = []
+            
+            for tag in soup.find_all(['a', 'button', 'iframe', 'embed']):
+                href = tag.get('href') or tag.get('src') or tag.get('data-src') or tag.get('onclick')
+                if not href:
+                    inner = tag.find('a')
+                    if inner: href = inner.get('href')
+                if not href: continue
                 
-                # Check ALL elements for potential PDF links
-                for tag in soup.find_all(['a', 'button', 'iframe', 'embed']):
-                    href = tag.get('href') or tag.get('src') or tag.get('data-src') or tag.get('onclick')
-                    if not href:
-                        # Check inside for a link (common wrapper pattern)
-                        inner = tag.find('a')
-                        if inner: href = inner.get('href')
-                    
-                    if not href: continue
-                    
-                    # Clean the href (handle JS onclick)
-                    href = str(href)
-                    if "window.location" in href or "window.open" in href:
-                        try:
-                            # Extract link from single or double quotes
-                            match = re.search(r"['\"](https?://[^'\"]+)['\"]", href)
+                href = str(href)
+                if "window.location" in href or "window.open" in href:
+                    try:
+                        match = re.search(r"['\"](https?://[^'\"]+)['\"]", href)
+                        if match: href = match.group(1)
+                        else:
+                            match = re.search(r"['\"](/[^'\"]+)['\"]", href)
                             if match: href = match.group(1)
-                            else:
-                                match = re.search(r"['\"](/[^'\"]+)['\"]", href)
-                                if match: href = match.group(1)
-                        except: pass
-                    
-                    if not (href.startswith('http') or href.startswith('/') or href.startswith('.')):
-                        continue
-                        
-                    full_href = urllib.parse.urljoin(url, href)
-                    text = tag.get_text(strip=True).lower()
-                    
-                    if full_href == url or "javascript" in full_href.lower() or full_href.startswith('#'):
-                        continue
-                    
-                    score = 0
-                    h_low = full_href.lower()
-                    if h_low.endswith('.pdf'): score += 120
-                    if "download pdf" in text: score += 100
-                    if "click here" in text: score += 90
-                    if "download" in text: score += 80
-                    if "pdf" in text: score += 70
-                    if "open" in text or "view" in text: score += 60
-                    if "question paper" in text: score += 50
-                    if "drive.google.com" in full_href: score += 100
-                    
-                    # Site specific weight
-                    if "selfstudys.com" in full_href and "download" in h_low: score += 40
-                    if "aglasem.com" in full_href and "pdf" in h_low: score += 40
-                    
-                    if score > 40:
-                        candidates.append((score, full_href))
+                    except: pass
                 
-                # SCRIPT TAG ANALYSIS (Find links hidden in JS)
-                import re
-                for script in soup.find_all('script'):
-                    content_str = script.string
-                    if content_str and (".pdf" in content_str or "drive.google.com" in content_str):
-                        urls = re.findall(r'https?://[^\s\"\'<>]+', content_str)
-                        for u in urls:
-                            if ".pdf" in u.lower() or "drive.google.com" in u.lower():
-                                candidates.append((110, u))
+                if not (href.startswith('http') or href.startswith('/') or href.startswith('.')): continue
+                full_href = urllib.parse.urljoin(url, href)
+                if full_href == url or "javascript" in full_href.lower() or full_href.startswith('#'): continue
+                
+                text = tag.get_text(strip=True).lower()
+                score = 0
+                h_low = full_href.lower()
+                if h_low.endswith('.pdf'): score += 150
+                if "download pdf" in text: score += 110
+                if "click here" in text: score += 90
+                if "download" in text: score += 80
+                if "view" in text or "open" in text: score += 60
+                if score > 40: candidates.append((score, full_href))
+            
+            # Script extraction
+            for script in soup.find_all('script'):
+                if script.string and (".pdf" in script.string or "drive.google.com" in script.string):
+                    urls = re.findall(r'https?://[^\s\"\'<>]+', script.string)
+                    for u in urls:
+                        if ".pdf" in u.lower(): candidates.append((130, u))
 
-                # Sort and try recursively
-                candidates.sort(key=lambda x: x[0], reverse=True)
-                seen_cands = {url, original_url}
-                unique_candidates = []
-                for _, cand in candidates:
-                    if cand not in seen_cands:
-                        unique_candidates.append(cand)
-                        seen_cands.add(cand)
+            candidates.sort(key=lambda x: x[0], reverse=True)
+            seen_cands = {url, original_url}
+            unique_cands = []
+            for _, c in candidates:
+                if c not in seen_cands: unique_cands.append(c); seen_cands.add(c)
 
-                # Try the top 8 candidates (increased breadth)
-                for cand in unique_candidates[:8]:
-                    res = await download_and_send_pdf(cand, update, context, depth + 1, status_msg)
-                    if res == "sent": return "sent"
-                    if res == "large": return "large"
+            for cand in unique_cands[:8]:
+                res = await download_and_send_pdf(cand, update, context, depth + 1, status_msg, client=client)
+                if res in ["sent", "large"]: return res
 
     except Exception as e:
-        logger.error(f"Download handle error for {url}: {e}")
-    
+        logger.error(f"Download Error at depth {depth}: {e}")
     return "failed"
-
-
 
 async def year_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Result renderer — uses Static DB directly for guaranteed results."""
