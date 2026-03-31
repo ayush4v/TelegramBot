@@ -5,6 +5,7 @@ import io
 import aiohttp
 import random
 from typing import List, Dict, Tuple
+from functools import wraps
 
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -42,8 +43,79 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Constants
-BOT_VERSION = "v13.0 Final-Bypass"
+BOT_VERSION = "v13.5 Sub-Check"
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+
+# Force-Subscription Settings
+REQUIRED_CHANNEL = "@QuestPapeBotchannel"
+CHANNEL_LINK = "https://t.me/QuestPapeBotchannel"
+
+async def is_user_subscribed(user_id: int, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Checks if a user is a member of the required channel."""
+    try:
+        member = await context.bot.get_chat_member(chat_id=REQUIRED_CHANNEL, user_id=user_id)
+        # Status can be 'creator', 'administrator', 'member', 'restricted', 'left', 'kicked'
+        return member.status in ["creator", "administrator", "member", "restricted"]
+    except Exception as e:
+        logger.warning(f"⚠️ Subscription Check Error: {e}. Ensure the bot is an ADMIN in {REQUIRED_CHANNEL}")
+        # In strict mode, we return False. Using True here as a safety fallback 
+        # so the bot doesn't completely die if the user forgot to add it as admin.
+        # But if the user wants it STRICT, this should be False.
+        return True # Change to False for strict enforcement (requires bot as admin)
+
+def force_subscription(func):
+    """Decorator to enforce channel subscription."""
+    @wraps(func)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        # Extract user ID from message or callback query
+        user = update.effective_user
+        if not user:
+            return await func(update, context, *args, **kwargs)
+            
+        user_id = user.id
+        # We only check for /start or messages/callbacks, not for bot's own actions
+        if await is_user_subscribed(user_id, context):
+            return await func(update, context, *args, **kwargs)
+        else:
+            # If not subscribed, send the join message
+            text = (
+                "🚨 **Mandatory Subscription Required!**\n\n"
+                f"To use this bot, you **MUST JOIN** our official channel:\n"
+                f"👉 **[Join Now]({CHANNEL_LINK})**\n\n"
+                "After joining, click the **'✅ Check Joined'** button below to continue using the bot."
+            )
+            keyboard = [
+                [InlineKeyboardButton("📢 Join Channel", url=CHANNEL_LINK)],
+                [InlineKeyboardButton("✅ Check Joined", callback_data="check_sub")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            # Use appropriate way to reply
+            if update.callback_query:
+                await update.callback_query.answer("⚠️ Subscription Required", show_alert=False)
+                await update.callback_query.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+            elif update.message:
+                await update.message.reply_text(text, reply_markup=reply_markup, parse_mode="Markdown")
+            return
+    return wrapper
+
+async def check_sub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Callback for 'Check Joined' button."""
+    query = update.callback_query
+    user_id = query.from_user.id
+    
+    if await is_user_subscribed(user_id, context):
+        await query.answer("✅ Verified! Welcome back.", show_alert=True)
+        # Delete the warning message if possible
+        try:
+            await query.message.delete()
+        except:
+            pass
+        # Proceed to start
+        return await start(update, context)
+    else:
+        await query.answer("❌ You still haven't joined the channel!", show_alert=True)
+
 print(f"DEBUG: EXECUTION REACHED MAIN.PY - VERSION {BOT_VERSION}")
 logger.info(f"🛠 Loading ExamBot {BOT_VERSION}...")
 
@@ -1381,16 +1453,17 @@ def main():
     application = ApplicationBuilder().token(BOT_TOKEN).build()
 
     # Register handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("debug", debug_command))
-    application.add_handler(CallbackQueryHandler(start, pattern="^back_cats$"))
-    application.add_handler(CallbackQueryHandler(direct_search_callback, pattern="^direct_search$"))
-    application.add_handler(CallbackQueryHandler(category_handler, pattern="^cat"))
-    application.add_handler(CallbackQueryHandler(exam_handler, pattern="^exam"))
-    application.add_handler(CallbackQueryHandler(year_handler, pattern="^year"))
-    application.add_handler(CallbackQueryHandler(download_callback, pattern="^dl_"))
-    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
+    application.add_handler(CallbackQueryHandler(check_sub_callback, pattern="^check_sub$"))
+    application.add_handler(CommandHandler("start", force_subscription(start)))
+    application.add_handler(CommandHandler("help", force_subscription(help_command)))
+    application.add_handler(CommandHandler("debug", force_subscription(debug_command)))
+    application.add_handler(CallbackQueryHandler(force_subscription(start), pattern="^back_cats$"))
+    application.add_handler(CallbackQueryHandler(force_subscription(direct_search_callback), pattern="^direct_search$"))
+    application.add_handler(CallbackQueryHandler(force_subscription(category_handler), pattern="^cat"))
+    application.add_handler(CallbackQueryHandler(force_subscription(exam_handler), pattern="^exam"))
+    application.add_handler(CallbackQueryHandler(force_subscription(year_handler), pattern="^year"))
+    application.add_handler(CallbackQueryHandler(force_subscription(download_callback), pattern="^dl_"))
+    application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), force_subscription(handle_message)))
 
     # START THE BOT
     logger.info(f"📡 PRODUCTION: Using Stable Polling (Health server on port {PORT})")
