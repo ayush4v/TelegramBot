@@ -43,7 +43,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Constants
-BOT_VERSION = "v13.5 Sub-Check"
+BOT_VERSION = "v14.0 Ultimate-Bypass"
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 # Force-Subscription Settings
@@ -989,23 +989,49 @@ async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.
         except: pass
 
     try:
-        # Create a session if not provided (top-level call)
-        if client is None:
-            async with primp.AsyncClient(impersonate="chrome_110", follow_redirects=True, verify=False) as session:
-                return await download_and_send_pdf(url, update, context, depth, status_msg, client=session)
-
-        # Use the provided persistent session
-        headers = {
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-            "Accept-Encoding": "gzip, deflate, br",
-            "Referer": original_url,
-            "Accept-Language": "en-US,en;q=0.9",
-        }
+        # Rotate impersonation profiles for better bypass
+        profiles = ["chrome_127", "safari_18", "edge_127", "chrome_120"]
+        chosen_profile = random.choice(profiles)
         
-        # User-Agent is handled by primp's impersonate profile to ensure JA3 match
-        response = await client.get(url, timeout=45, headers=headers)
-        if response.status_code not in [200, 201, 206]: return "failed"
-            
+        # Use simple headers, primp will handle the rest based on profile
+        headers = {
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Referer": "https://www.google.com/",
+            "Upgrade-Insecure-Requests": "1",
+            "Connection": "keep-alive",
+        }
+
+        # Update status if possible
+        if status_msg and depth >= 1:
+            try: await status_msg.edit_text(f"🛰 **Bypassing Security... (Layer {depth})**\n🎭 `{chosen_profile}`", parse_mode="Markdown")
+            except: pass
+        
+        if client is None:
+            # First try with chosen profile
+            async with primp.AsyncClient(impersonate=chosen_profile, follow_redirects=True, verify=False, timeout=60) as session:
+                response = await session.get(url, headers=headers)
+                # If blocked, try one more time with a different profile
+                if response.status_code in [403, 429]:
+                    alt_profile = "safari_18" if "chrome" in chosen_profile else "chrome_127"
+                    async with primp.AsyncClient(impersonate=alt_profile, follow_redirects=True, verify=False) as session2:
+                        response = await session2.get(url, headers=headers)
+                
+                if response.status_code not in [200, 201, 206]: return "failed"
+                # Continue processing with session-based context if needed
+                client = session # Temporary for recursive calls
+                return await process_download_response(response, url, original_url, update, context, depth, status_msg, client)
+        else:
+            response = await client.get(url, timeout=45, headers=headers)
+            if response.status_code not in [200, 201, 206]: return "failed"
+            return await process_download_response(response, url, original_url, update, context, depth, status_msg, client)
+    except Exception as e:
+        logger.error(f"Hunter Error at depth {depth}: {e}")
+    return "failed"
+
+async def process_download_response(response, url, original_url, update, context, depth, status_msg, client):
+    """Processes the HTTP response to find or deliver PDF."""
+    try:
         ctype = response.headers.get("Content-Type", "").lower()
         content = response.content
         
@@ -1021,24 +1047,34 @@ async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.
                      break
             
             msg = update.callback_query.message if update.callback_query else update.message
-            await msg.reply_document(document=io.BytesIO(content), filename=fname,
-                caption=f"✅ **Bypass Success!**\n\n📄 {fname}\n\n_Note: Paper delivered via Super-Hunter v12.8_")
-            return "sent"
+            try:
+                await msg.reply_document(
+                    document=io.BytesIO(content), 
+                    filename=fname,
+                    caption=f"✅ **Bypass Success!**\n\n📄 {fname}\n\n_Note: Paper delivered via Super-Hunter v{BOT_VERSION}_",
+                    read_timeout=120, 
+                    write_timeout=120
+                )
+                return "sent"
+            except Exception as e:
+                logger.error(f"Failed to send document: {e}")
+                return "failed"
 
         # 2. HTML PAGE - DEEP EXTRACTION
         if "html" in ctype or "text" in ctype or len(content) < 8000:
             soup = BeautifulSoup(response.text, 'html.parser')
             candidates = []
             
-            for tag in soup.find_all(['a', 'button', 'iframe', 'embed']):
-                href = tag.get('href') or tag.get('src') or tag.get('data-src') or tag.get('onclick')
+            for tag in soup.find_all(['a', 'button', 'iframe', 'embed', 'form']):
+                href = tag.get('href') or tag.get('src') or tag.get('data-src') or tag.get('onclick') or tag.get('action')
                 if not href:
                     inner = tag.find('a')
                     if inner: href = inner.get('href')
                 if not href: continue
                 
                 href = str(href)
-                if "window.location" in href or "window.open" in href:
+                # Handle JS Redirects
+                if any(x in href for x in ["window.location", "window.open", "location.href"]):
                     try:
                         match = re.search(r"['\"](https?://[^'\"]+)['\"]", href)
                         if match: href = match.group(1)
@@ -1054,12 +1090,19 @@ async def download_and_send_pdf(url: str, update: Update, context: ContextTypes.
                 text = tag.get_text(strip=True).lower()
                 score = 0
                 h_low = full_href.lower()
-                if h_low.endswith('.pdf'): score += 150
-                if "download pdf" in text: score += 110
+                
+                # Scoring Optimization
+                if h_low.endswith('.pdf'): score += 200
+                if "download" in text and "pdf" in text: score += 150
+                if "full paper" in text or "question paper" in text: score += 120
                 if "click here" in text: score += 90
                 if "download" in text: score += 80
                 if "view" in text or "open" in text: score += 60
-                if score > 40: candidates.append((score, full_href))
+                
+                # Penalize non-pdf results that look like ads
+                if any(ad in h_low for ad in ["ads.", "googleads", "facebook.com", "amazon."]): score -= 100
+                
+                if score >= 50: candidates.append((score, full_href))
             
             # Script extraction
             for script in soup.find_all('script'):
