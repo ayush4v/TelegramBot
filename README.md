@@ -7,15 +7,16 @@ sdk: docker
 pinned: false
 ---
 
-# Exam Assistant Bot v11.0 LIVE 📚
+# Exam Assistant Bot v14.0 Ultimate-Bypass 📚
 
-Ek simple Telegram bot jo students ko **Previous Year Question Papers (PYQ)** PDF format mein dhoondne mein help karta hai.
+Ek powerful Telegram bot jo students ko **Previous Year Question Papers (PYQ)** PDF format mein dhoondne aur **Direct Download** karwane mein help karta hai.
 
 ## ✨ Features
-- **Direct Search**: Kisi bhi subject ya exam ka naam likhein (जैसे: `Class 10 CBSE Maths 2022`).
-- **PDF Preference**: Ye bot online direct PDF links ko dhoondne ki koshish karta hai.
-- **Easy Interface**: JEE, NEET, CBSE, SSC jaise exams ke liye buttons.
-- **Free & Fast**: Bina kisi database ke live search.
+- **Super-Hunter Engine**: 6-layer deep bypass logic to find PDFs on restricted sites.
+- **Advanced Extraction**: समझता है "JavaScript Redirects" और "Hidden Download Buttons" को भी.
+- **Direct PDF Delivery**: Telegram mein seedha PDF file milti hai (no external links).
+- **Mandatory Subscription**: Official channel (@QuestPapeBotchannel) membership check.
+- **Fast & Reliable**: Latest primp-driven browser impersonation for bypass.
 
 ## 🚀 Setup & Run (Local)
 
