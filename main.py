@@ -363,38 +363,47 @@ async def search_ddg_html(query: str, limit: int = 8) -> List[dict]:
 STATIC_DB: Dict[str, List[dict]] = {
     # ═══════════════════════════════════════════════════════════
     # JEE MAINS - All Years 2018-2024
+    # Priority: 1. NTA Official  2. AglaSem  3. SelfStudys
     # ═══════════════════════════════════════════════════════════
     "jee mains 2024": [
-        {"title": "JEE Main 2024 Jan & Apr Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2024/"},
-        {"title": "JEE Main 2024 All Papers PDF - SelfStudys", "url": "https://www.selfstudys.com/jee-main-2024-question-paper"},
+        {"title": "📜 JEE Main 2024 Official - NTA (Authentic)", "url": "https://exams.nta.ac.in/JEE-Main/images/Question-Papers-and-Answer-Key/2024/JAN/", "quality": "official", "verified": True},
+        {"title": "JEE Main 2024 Jan & Apr Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2024/", "quality": "high"},
+        {"title": "JEE Main 2024 All Papers PDF - SelfStudys", "url": "https://www.selfstudys.com/jee-main-2024-question-paper", "quality": "medium"},
     ],
     "jee mains 2023": [
-        {"title": "JEE Main 2023 Jan & Apr Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2023/"},
-        {"title": "JEE Main 2023 Papers PDF", "url": "https://www.selfstudys.com/jee-main-2023-question-paper"},
+        {"title": "📜 JEE Main 2023 Official - NTA (Authentic)", "url": "https://exams.nta.ac.in/JEE-Main/images/Question-Papers-and-Answer-Key/2023/", "quality": "official", "verified": True},
+        {"title": "JEE Main 2023 Jan & Apr Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2023/", "quality": "high"},
+        {"title": "JEE Main 2023 Papers PDF", "url": "https://www.selfstudys.com/jee-main-2023-question-paper", "quality": "medium"},
     ],
     "jee mains 2022": [
-        {"title": "JEE Main 2022 Jun & Jul Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2022/"},
-        {"title": "JEE Main 2022 Papers PDF", "url": "https://www.selfstudys.com/jee-main-2022-question-paper"},
+        {"title": "📜 JEE Main 2022 Official - NTA (Authentic)", "url": "https://exams.nta.ac.in/JEE-Main/images/Question-Papers-and-Answer-Key/2022/", "quality": "official", "verified": True},
+        {"title": "JEE Main 2022 Jun & Jul Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2022/", "quality": "high"},
+        {"title": "JEE Main 2022 Papers PDF", "url": "https://www.selfstudys.com/jee-main-2022-question-paper", "quality": "medium"},
     ],
     "jee mains 2021": [
-        {"title": "JEE Main 2021 Feb-Aug Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2021/"},
-        {"title": "JEE Main 2021 Papers PDF", "url": "https://www.selfstudys.com/jee-main-2021-question-paper"},
+        {"title": "📜 JEE Main 2021 Official - NTA (Authentic)", "url": "https://exams.nta.ac.in/JEE-Main/images/Question-Papers-and-Answer-Key/2021/", "quality": "official", "verified": True},
+        {"title": "JEE Main 2021 Feb-Aug Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2021/", "quality": "high"},
+        {"title": "JEE Main 2021 Papers PDF", "url": "https://www.selfstudys.com/jee-main-2021-question-paper", "quality": "medium"},
     ],
     "jee mains 2020": [
-        {"title": "JEE Main 2020 Jan & Sep Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2020/"},
-        {"title": "JEE Main 2020 Papers PDF", "url": "https://www.selfstudys.com/jee-main-2020-question-paper"},
+        {"title": "📜 JEE Main 2020 Official - NTA (Authentic)", "url": "https://exams.nta.ac.in/JEE-Main/images/Question-Papers-and-Answer-Key/2020/", "quality": "official", "verified": True},
+        {"title": "JEE Main 2020 Jan & Sep Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2020/", "quality": "high"},
+        {"title": "JEE Main 2020 Papers PDF", "url": "https://www.selfstudys.com/jee-main-2020-question-paper", "quality": "medium"},
     ],
     "jee mains 2019": [
-        {"title": "JEE Main 2019 Jan & Apr Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2019/"},
-        {"title": "JEE Main 2019 Papers PDF", "url": "https://www.selfstudys.com/jee-main-2019-question-paper"},
+        {"title": "📜 JEE Main 2019 Official - NTA (Authentic)", "url": "https://exams.nta.ac.in/JEE-Main/images/Question-Papers-and-Answer-Key/2019/", "quality": "official", "verified": True},
+        {"title": "JEE Main 2019 Jan & Apr Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2019/", "quality": "high"},
+        {"title": "JEE Main 2019 Papers PDF", "url": "https://www.selfstudys.com/jee-main-2019-question-paper", "quality": "medium"},
     ],
     "jee mains 2018": [
-        {"title": "JEE Main 2018 Offline & Online - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2018/"},
-        {"title": "JEE Main 2018 Papers PDF", "url": "https://www.selfstudys.com/jee-main-2018-question-paper"},
+        {"title": "📜 JEE Main 2018 Official - CBSE (Authentic)", "url": "https://jeemain.nta.nic.in/2018/", "quality": "official", "verified": True},
+        {"title": "JEE Main 2018 Offline & Online - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-2018/", "quality": "high"},
+        {"title": "JEE Main 2018 Papers PDF", "url": "https://www.selfstudys.com/jee-main-2018-question-paper", "quality": "medium"},
     ],
     "jee mains": [
-        {"title": "JEE Main All Years Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-question-papers/"},
-        {"title": "JEE Main Previous Year Papers - Careers360", "url": "https://engineering.careers360.com/articles/jee-main-previous-year-question-papers"},
+        {"title": "📜 JEE Main Official Archive - NTA (Authentic)", "url": "https://exams.nta.ac.in/JEE-Main/images/Question-Papers-and-Answer-Key/", "quality": "official", "verified": True},
+        {"title": "JEE Main All Years Papers - AglaSem", "url": "https://schools.aglasem.com/tag/jee-main-question-papers/", "quality": "high"},
+        {"title": "JEE Main Previous Year Papers - Careers360", "url": "https://engineering.careers360.com/articles/jee-main-previous-year-question-papers", "quality": "medium"},
     ],
     
     # ═══════════════════════════════════════════════════════════
@@ -433,38 +442,47 @@ STATIC_DB: Dict[str, List[dict]] = {
     
     # ═══════════════════════════════════════════════════════════
     # NEET UG - All Years 2018-2024
+    # Priority: 1. NTA Official  2. AglaSem  3. SelfStudys
     # ═══════════════════════════════════════════════════════════
     "neet ug 2024": [
-        {"title": "NEET UG 2024 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2024/"},
-        {"title": "NEET 2024 Question Paper with Solutions", "url": "https://www.selfstudys.com/neet-2024-question-paper"},
+        {"title": "📜 NEET UG 2024 Official - NTA (Authentic)", "url": "https://exams.nta.ac.in/NEET/images/Question-Papers-and-Answer-Key/2024/", "quality": "official", "verified": True},
+        {"title": "NEET UG 2024 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2024/", "quality": "high"},
+        {"title": "NEET 2024 Question Paper with Solutions", "url": "https://www.selfstudys.com/neet-2024-question-paper", "quality": "medium"},
     ],
     "neet ug 2023": [
-        {"title": "NEET UG 2023 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2023/"},
-        {"title": "NEET 2023 Question Paper", "url": "https://www.selfstudys.com/neet-2023-question-paper"},
+        {"title": "📜 NEET UG 2023 Official - NTA (Authentic)", "url": "https://exams.nta.ac.in/NEET/images/Question-Papers-and-Answer-Key/2023/", "quality": "official", "verified": True},
+        {"title": "NEET UG 2023 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2023/", "quality": "high"},
+        {"title": "NEET 2023 Question Paper", "url": "https://www.selfstudys.com/neet-2023-question-paper", "quality": "medium"},
     ],
     "neet ug 2022": [
-        {"title": "NEET UG 2022 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2022/"},
-        {"title": "NEET 2022 Question Paper", "url": "https://www.selfstudys.com/neet-2022-question-paper"},
+        {"title": "📜 NEET UG 2022 Official - NTA (Authentic)", "url": "https://exams.nta.ac.in/NEET/images/Question-Papers-and-Answer-Key/2022/", "quality": "official", "verified": True},
+        {"title": "NEET UG 2022 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2022/", "quality": "high"},
+        {"title": "NEET 2022 Question Paper", "url": "https://www.selfstudys.com/neet-2022-question-paper", "quality": "medium"},
     ],
     "neet ug 2021": [
-        {"title": "NEET UG 2021 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2021/"},
-        {"title": "NEET 2021 Question Paper", "url": "https://www.selfstudys.com/neet-2021-question-paper"},
+        {"title": "📜 NEET UG 2021 Official - NTA (Authentic)", "url": "https://exams.nta.ac.in/NEET/images/Question-Papers-and-Answer-Key/2021/", "quality": "official", "verified": True},
+        {"title": "NEET UG 2021 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2021/", "quality": "high"},
+        {"title": "NEET 2021 Question Paper", "url": "https://www.selfstudys.com/neet-2021-question-paper", "quality": "medium"},
     ],
     "neet ug 2020": [
-        {"title": "NEET UG 2020 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2020/"},
-        {"title": "NEET 2020 Question Paper", "url": "https://www.selfstudys.com/neet-2020-question-paper"},
+        {"title": "📜 NEET UG 2020 Official - NTA (Authentic)", "url": "https://exams.nta.ac.in/NEET/images/Question-Papers-and-Answer-Key/2020/", "quality": "official", "verified": True},
+        {"title": "NEET UG 2020 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2020/", "quality": "high"},
+        {"title": "NEET 2020 Question Paper", "url": "https://www.selfstudys.com/neet-2020-question-paper", "quality": "medium"},
     ],
     "neet ug 2019": [
-        {"title": "NEET UG 2019 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2019/"},
-        {"title": "NEET 2019 Question Paper", "url": "https://www.selfstudys.com/neet-2019-question-paper"},
+        {"title": "📜 NEET UG 2019 Official - NTA (Authentic)", "url": "https://exams.nta.ac.in/NEET/images/Question-Papers-and-Answer-Key/2019/", "quality": "official", "verified": True},
+        {"title": "NEET UG 2019 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2019/", "quality": "high"},
+        {"title": "NEET 2019 Question Paper", "url": "https://www.selfstudys.com/neet-2019-question-paper", "quality": "medium"},
     ],
     "neet ug 2018": [
-        {"title": "NEET UG 2018 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2018/"},
-        {"title": "NEET 2018 Question Paper", "url": "https://www.selfstudys.com/neet-2018-question-paper"},
+        {"title": "📜 NEET UG 2018 Official - CBSE (Authentic)", "url": "https://cbseneet.nic.in/", "quality": "official", "verified": True},
+        {"title": "NEET UG 2018 Paper PDF - AglaSem", "url": "https://schools.aglasem.com/tag/neet-2018/", "quality": "high"},
+        {"title": "NEET 2018 Question Paper", "url": "https://www.selfstudys.com/neet-2018-question-paper", "quality": "medium"},
     ],
     "neet ug": [
-        {"title": "NEET All Years Papers - AglaSem", "url": "https://schools.aglasem.com/tag/neet-question-papers/"},
-        {"title": "NEET Previous Year Papers - Careers360", "url": "https://medicine.careers360.com/articles/neet-previous-year-question-papers"},
+        {"title": "📜 NEET UG Official Archive - NTA (Authentic)", "url": "https://exams.nta.ac.in/NEET/images/Question-Papers-and-Answer-Key/", "quality": "official", "verified": True},
+        {"title": "NEET All Years Papers - AglaSem", "url": "https://schools.aglasem.com/tag/neet-question-papers/", "quality": "high"},
+        {"title": "NEET Previous Year Papers - Careers360", "url": "https://medicine.careers360.com/articles/neet-previous-year-question-papers", "quality": "medium"},
     ],
     
     # ═══════════════════════════════════════════════════════════
@@ -561,66 +579,80 @@ STATIC_DB: Dict[str, List[dict]] = {
     
     # ═══════════════════════════════════════════════════════════
     # UPSC CSE - All Years 2018-2024
+    # Priority: 1. UPSC Official  2. AglaSem
     # ═══════════════════════════════════════════════════════════
     "upsc cse 2024": [
-        {"title": "UPSC CSE 2024 Prelims & Mains - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2024/"},
-        {"title": "UPSC 2024 Official Papers", "url": "https://upsc.gov.in/examinations/previous-question-papers"},
+        {"title": "📜 UPSC CSE 2024 Official Papers - UPSC (Authentic)", "url": "https://upsc.gov.in/examinations/previous-question-papers", "quality": "official", "verified": True},
+        {"title": "UPSC CSE 2024 Prelims & Mains - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2024/", "quality": "high"},
     ],
     "upsc cse 2023": [
-        {"title": "UPSC CSE 2023 Prelims & Mains - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2023/"},
-        {"title": "UPSC 2023 Official Papers", "url": "https://upsc.gov.in/examinations/previous-question-papers"},
+        {"title": "📜 UPSC CSE 2023 Official Papers - UPSC (Authentic)", "url": "https://upsc.gov.in/examinations/previous-question-papers", "quality": "official", "verified": True},
+        {"title": "UPSC CSE 2023 Prelims & Mains - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2023/", "quality": "high"},
     ],
     "upsc cse 2022": [
-        {"title": "UPSC CSE 2022 Prelims & Mains - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2022/"},
+        {"title": "📜 UPSC CSE 2022 Official Papers - UPSC (Authentic)", "url": "https://upsc.gov.in/examinations/previous-question-papers", "quality": "official", "verified": True},
+        {"title": "UPSC CSE 2022 Prelims & Mains - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2022/", "quality": "high"},
     ],
     "upsc cse 2021": [
-        {"title": "UPSC CSE 2021 Prelims & Mains - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2021/"},
+        {"title": "📜 UPSC CSE 2021 Official Papers - UPSC (Authentic)", "url": "https://upsc.gov.in/examinations/previous-question-papers", "quality": "official", "verified": True},
+        {"title": "UPSC CSE 2021 Prelims & Mains - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2021/", "quality": "high"},
     ],
     "upsc cse 2020": [
-        {"title": "UPSC CSE 2020 Prelims & Mains - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2020/"},
+        {"title": "📜 UPSC CSE 2020 Official Papers - UPSC (Authentic)", "url": "https://upsc.gov.in/examinations/previous-question-papers", "quality": "official", "verified": True},
+        {"title": "UPSC CSE 2020 Prelims & Mains - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2020/", "quality": "high"},
     ],
     "upsc cse 2019": [
-        {"title": "UPSC CSE 2019 Prelims & Mains - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2019/"},
+        {"title": "📜 UPSC CSE 2019 Official Papers - UPSC (Authentic)", "url": "https://upsc.gov.in/examinations/previous-question-papers", "quality": "official", "verified": True},
+        {"title": "UPSC CSE 2019 Prelims & Mains - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2019/", "quality": "high"},
     ],
     "upsc cse 2018": [
-        {"title": "UPSC CSE 2018 Prelims & Mains - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2018/"},
+        {"title": "📜 UPSC CSE 2018 Official Papers - UPSC (Authentic)", "url": "https://upsc.gov.in/examinations/previous-question-papers", "quality": "official", "verified": True},
+        {"title": "UPSC CSE 2018 Prelims & Mains - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-2018/", "quality": "high"},
     ],
     "upsc cse": [
-        {"title": "UPSC CSE All Year Papers - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-question-papers/"},
-        {"title": "UPSC Official Paper Archive", "url": "https://upsc.gov.in/examinations/previous-question-papers"},
+        {"title": "📜 UPSC CSE Official Paper Archive - UPSC (Authentic)", "url": "https://upsc.gov.in/examinations/previous-question-papers", "quality": "official", "verified": True},
+        {"title": "UPSC CSE All Year Papers - AglaSem", "url": "https://schools.aglasem.com/tag/upsc-question-papers/", "quality": "high"},
     ],
     
     # ═══════════════════════════════════════════════════════════
     # SSC CGL - All Years 2018-2024
+    # Priority: 1. SSC Official  2. AglaSem  3. SelfStudys
     # ═══════════════════════════════════════════════════════════
     "ssc cgl 2024": [
-        {"title": "SSC CGL 2024 Tier 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2024/"},
-        {"title": "SSC CGL 2024 Papers PDF", "url": "https://www.selfstudys.com/ssc-cgl-2024-question-paper"},
+        {"title": "📜 SSC CGL 2024 Official - SSC (Authentic)", "url": "https://ssc.nic.in/Portal/Previous_Question_Paper", "quality": "official", "verified": True},
+        {"title": "SSC CGL 2024 Tier 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2024/", "quality": "high"},
+        {"title": "SSC CGL 2024 Papers PDF", "url": "https://www.selfstudys.com/ssc-cgl-2024-question-paper", "quality": "medium"},
     ],
     "ssc cgl 2023": [
-        {"title": "SSC CGL 2023 Tier 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2023/"},
-        {"title": "SSC CGL 2023 Papers PDF", "url": "https://www.selfstudys.com/ssc-cgl-2023-question-paper"},
+        {"title": "📜 SSC CGL 2023 Official - SSC (Authentic)", "url": "https://ssc.nic.in/Portal/Previous_Question_Paper", "quality": "official", "verified": True},
+        {"title": "SSC CGL 2023 Tier 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2023/", "quality": "high"},
+        {"title": "SSC CGL 2023 Papers PDF", "url": "https://www.selfstudys.com/ssc-cgl-2023-question-paper", "quality": "medium"},
     ],
     "ssc cgl 2022": [
-        {"title": "SSC CGL 2022 Tier 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2022/"},
-        {"title": "SSC CGL 2022 Papers PDF", "url": "https://www.selfstudys.com/ssc-cgl-2022-question-paper"},
+        {"title": "📜 SSC CGL 2022 Official - SSC (Authentic)", "url": "https://ssc.nic.in/Portal/Previous_Question_Paper", "quality": "official", "verified": True},
+        {"title": "SSC CGL 2022 Tier 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2022/", "quality": "high"},
+        {"title": "SSC CGL 2022 Papers PDF", "url": "https://www.selfstudys.com/ssc-cgl-2022-question-paper", "quality": "medium"},
     ],
     "ssc cgl 2021": [
-        {"title": "SSC CGL 2021 Tier 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2021/"},
-        {"title": "SSC CGL 2021 Papers PDF", "url": "https://www.selfstudys.com/ssc-cgl-2021-question-paper"},
+        {"title": "📜 SSC CGL 2021 Official - SSC (Authentic)", "url": "https://ssc.nic.in/Portal/Previous_Question_Paper", "quality": "official", "verified": True},
+        {"title": "SSC CGL 2021 Tier 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2021/", "quality": "high"},
+        {"title": "SSC CGL 2021 Papers PDF", "url": "https://www.selfstudys.com/ssc-cgl-2021-question-paper", "quality": "medium"},
     ],
     "ssc cgl 2020": [
-        {"title": "SSC CGL 2020 Tier 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2020/"},
+        {"title": "📜 SSC CGL 2020 Official - SSC (Authentic)", "url": "https://ssc.nic.in/Portal/Previous_Question_Paper", "quality": "official", "verified": True},
+        {"title": "SSC CGL 2020 Tier 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2020/", "quality": "high"},
     ],
     "ssc cgl 2019": [
-        {"title": "SSC CGL 2019 Tier 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2019/"},
+        {"title": "📜 SSC CGL 2019 Official - SSC (Authentic)", "url": "https://ssc.nic.in/Portal/Previous_Question_Paper", "quality": "official", "verified": True},
+        {"title": "SSC CGL 2019 Tier 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2019/", "quality": "high"},
     ],
     "ssc cgl 2018": [
-        {"title": "SSC CGL 2018 Tier 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2018/"},
+        {"title": "📜 SSC CGL 2018 Official - SSC (Authentic)", "url": "https://ssc.nic.in/Portal/Previous_Question_Paper", "quality": "official", "verified": True},
+        {"title": "SSC CGL 2018 Tier 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-2018/", "quality": "high"},
     ],
     "ssc cgl": [
-        {"title": "SSC CGL All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-question-papers/"},
-        {"title": "SSC Official PYQ Portal", "url": "https://ssc.nic.in/Portal/Previous_Question_Paper"},
+        {"title": "📜 SSC CGL Official PYQ Portal - SSC (Authentic)", "url": "https://ssc.nic.in/Portal/Previous_Question_Paper", "quality": "official", "verified": True},
+        {"title": "SSC CGL All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/ssc-cgl-question-papers/", "quality": "high"},
     ],
     
     # ═══════════════════════════════════════════════════════════
@@ -667,23 +699,39 @@ STATIC_DB: Dict[str, List[dict]] = {
     
     # ═══════════════════════════════════════════════════════════
     # NDA - All Years 2018-2024
+    # Priority: 1. UPSC Official  2. AglaSem
     # ═══════════════════════════════════════════════════════════
     "nda 2024": [
-        {"title": "NDA 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2024/"},
-        {"title": "NDA 2024 Official - UPSC", "url": "https://upsc.gov.in/examinations/previous-question-papers"},
+        {"title": "📜 NDA 2024 Official - UPSC (Authentic)", "url": "https://upsc.gov.in/examinations/previous-question-papers", "quality": "official", "verified": True},
+        {"title": "NDA 2024 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2024/", "quality": "high"},
     ],
     "nda 2023": [
-        {"title": "NDA 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2023/"},
-        {"title": "NDA 2023 Official - UPSC", "url": "https://upsc.gov.in/examinations/previous-question-papers"},
+        {"title": "📜 NDA 2023 Official - UPSC (Authentic)", "url": "https://upsc.gov.in/examinations/previous-question-papers", "quality": "official", "verified": True},
+        {"title": "NDA 2023 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2023/", "quality": "high"},
     ],
-    "nda 2022": [{"title": "NDA 2022 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2022/"}],
-    "nda 2021": [{"title": "NDA 2021 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2021/"}],
-    "nda 2020": [{"title": "NDA 2020 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2020/"}],
-    "nda 2019": [{"title": "NDA 2019 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2019/"}],
-    "nda 2018": [{"title": "NDA 2018 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2018/"}],
+    "nda 2022": [
+        {"title": "📜 NDA 2022 Official - UPSC (Authentic)", "url": "https://upsc.gov.in/examinations/previous-question-papers", "quality": "official", "verified": True},
+        {"title": "NDA 2022 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2022/", "quality": "high"},
+    ],
+    "nda 2021": [
+        {"title": "📜 NDA 2021 Official - UPSC (Authentic)", "url": "https://upsc.gov.in/examinations/previous-question-papers", "quality": "official", "verified": True},
+        {"title": "NDA 2021 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2021/", "quality": "high"},
+    ],
+    "nda 2020": [
+        {"title": "📜 NDA 2020 Official - UPSC (Authentic)", "url": "https://upsc.gov.in/examinations/previous-question-papers", "quality": "official", "verified": True},
+        {"title": "NDA 2020 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2020/", "quality": "high"},
+    ],
+    "nda 2019": [
+        {"title": "📜 NDA 2019 Official - UPSC (Authentic)", "url": "https://upsc.gov.in/examinations/previous-question-papers", "quality": "official", "verified": True},
+        {"title": "NDA 2019 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2019/", "quality": "high"},
+    ],
+    "nda 2018": [
+        {"title": "📜 NDA 2018 Official - UPSC (Authentic)", "url": "https://upsc.gov.in/examinations/previous-question-papers", "quality": "official", "verified": True},
+        {"title": "NDA 2018 Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-2018/", "quality": "high"},
+    ],
     "nda": [
-        {"title": "NDA All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-question-papers/"},
-        {"title": "NDA Official - UPSC", "url": "https://upsc.gov.in/examinations/previous-question-papers"},
+        {"title": "📜 NDA Official Papers - UPSC (Authentic)", "url": "https://upsc.gov.in/examinations/previous-question-papers", "quality": "official", "verified": True},
+        {"title": "NDA All Papers - AglaSem", "url": "https://schools.aglasem.com/tag/nda-question-papers/", "quality": "high"},
     ],
     
     # ═══════════════════════════════════════════════════════════
@@ -698,72 +746,88 @@ STATIC_DB: Dict[str, List[dict]] = {
     
     # ═══════════════════════════════════════════════════════════
     # CBSE Class 10 - All Years 2018-2024
+    # Priority: 1. CBSE Academic Official  2. AglaSem  3. SelfStudys
     # ═══════════════════════════════════════════════════════════
     "cbse class 10 2024": [
-        {"title": "CBSE Class 10 2024 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2024/"},
-        {"title": "CBSE 10th 2024 All Subjects", "url": "https://www.selfstudys.com/cbse/class-10th-question-paper/2024"},
+        {"title": "📜 CBSE Class 10 2024 Official - CBSE Academic", "url": "https://cbseacademic.nic.in/SQP_CLASSX.html", "quality": "official", "verified": True},
+        {"title": "CBSE Class 10 2024 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2024/", "quality": "high"},
+        {"title": "CBSE 10th 2024 All Subjects", "url": "https://www.selfstudys.com/cbse/class-10th-question-paper/2024", "quality": "medium"},
     ],
     "cbse class 10 2023": [
-        {"title": "CBSE Class 10 2023 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2023/"},
-        {"title": "CBSE 10th 2023 All Subjects", "url": "https://www.selfstudys.com/cbse/class-10th-question-paper/2023"},
+        {"title": "📜 CBSE Class 10 2023 Official - CBSE Academic", "url": "https://cbseacademic.nic.in/SQP_CLASSX.html", "quality": "official", "verified": True},
+        {"title": "CBSE Class 10 2023 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2023/", "quality": "high"},
+        {"title": "CBSE 10th 2023 All Subjects", "url": "https://www.selfstudys.com/cbse/class-10th-question-paper/2023", "quality": "medium"},
     ],
     "cbse class 10 2022": [
-        {"title": "CBSE Class 10 2022 Term 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2022/"},
-        {"title": "CBSE 10th 2022 All Subjects", "url": "https://www.selfstudys.com/cbse/class-10th-question-paper/2022"},
+        {"title": "📜 CBSE Class 10 2022 Official - CBSE Academic", "url": "https://cbseacademic.nic.in/SQP_CLASSX.html", "quality": "official", "verified": True},
+        {"title": "CBSE Class 10 2022 Term 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2022/", "quality": "high"},
+        {"title": "CBSE 10th 2022 All Subjects", "url": "https://www.selfstudys.com/cbse/class-10th-question-paper/2022", "quality": "medium"},
     ],
     "cbse class 10 2021": [
-        {"title": "CBSE Class 10 2021 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2021/"},
-        {"title": "CBSE 10th 2021 All Subjects", "url": "https://www.selfstudys.com/cbse/class-10th-question-paper/2021"},
+        {"title": "📜 CBSE Class 10 2021 Official - CBSE Academic", "url": "https://cbseacademic.nic.in/SQP_CLASSX.html", "quality": "official", "verified": True},
+        {"title": "CBSE Class 10 2021 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2021/", "quality": "high"},
+        {"title": "CBSE 10th 2021 All Subjects", "url": "https://www.selfstudys.com/cbse/class-10th-question-paper/2021", "quality": "medium"},
     ],
     "cbse class 10 2020": [
-        {"title": "CBSE Class 10 2020 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2020/"},
-        {"title": "CBSE 10th 2020 All Subjects", "url": "https://www.selfstudys.com/cbse/class-10th-question-paper/2020"},
+        {"title": "📜 CBSE Class 10 2020 Official - CBSE Academic", "url": "https://cbseacademic.nic.in/SQP_CLASSX.html", "quality": "official", "verified": True},
+        {"title": "CBSE Class 10 2020 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2020/", "quality": "high"},
+        {"title": "CBSE 10th 2020 All Subjects", "url": "https://www.selfstudys.com/cbse/class-10th-question-paper/2020", "quality": "medium"},
     ],
     "cbse class 10 2019": [
-        {"title": "CBSE Class 10 2019 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2019/"},
+        {"title": "📜 CBSE Class 10 2019 Official - CBSE Academic", "url": "https://cbseacademic.nic.in/SQP_CLASSX.html", "quality": "official", "verified": True},
+        {"title": "CBSE Class 10 2019 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2019/", "quality": "high"},
     ],
     "cbse class 10 2018": [
-        {"title": "CBSE Class 10 2018 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2018/"},
+        {"title": "📜 CBSE Class 10 2018 Official - CBSE Academic", "url": "https://cbseacademic.nic.in/SQP_CLASSX.html", "quality": "official", "verified": True},
+        {"title": "CBSE Class 10 2018 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-2018/", "quality": "high"},
     ],
     "cbse class 10": [
-        {"title": "CBSE Class 10 All Years - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-question-papers/"},
-        {"title": "CBSE Official Sample Papers", "url": "https://cbseacademic.nic.in/SQP_CLASSXI.html"},
-        {"title": "CBSE 10th All Years - SelfStudys", "url": "https://www.selfstudys.com/cbse/class-10th-question-paper"},
+        {"title": "📜 CBSE Class 10 Official Sample Papers - CBSE", "url": "https://cbseacademic.nic.in/SQP_CLASSXI.html", "quality": "official", "verified": True},
+        {"title": "CBSE Class 10 All Years - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-10-question-papers/", "quality": "high"},
+        {"title": "CBSE 10th All Years - SelfStudys", "url": "https://www.selfstudys.com/cbse/class-10th-question-paper", "quality": "medium"},
     ],
     
     # ═══════════════════════════════════════════════════════════
     # CBSE Class 12 - All Years 2018-2024
+    # Priority: 1. CBSE Academic Official  2. AglaSem  3. SelfStudys
     # ═══════════════════════════════════════════════════════════
     "cbse class 12 2024": [
-        {"title": "CBSE Class 12 2024 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2024/"},
-        {"title": "CBSE 12th 2024 All Subjects", "url": "https://www.selfstudys.com/cbse/class-12th-question-paper/2024"},
+        {"title": "📜 CBSE Class 12 2024 Official - CBSE Academic", "url": "https://cbseacademic.nic.in/SQP_CLASSXII.html", "quality": "official", "verified": True},
+        {"title": "CBSE Class 12 2024 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2024/", "quality": "high"},
+        {"title": "CBSE 12th 2024 All Subjects", "url": "https://www.selfstudys.com/cbse/class-12th-question-paper/2024", "quality": "medium"},
     ],
     "cbse class 12 2023": [
-        {"title": "CBSE Class 12 2023 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2023/"},
-        {"title": "CBSE 12th 2023 All Subjects", "url": "https://www.selfstudys.com/cbse/class-12th-question-paper/2023"},
+        {"title": "📜 CBSE Class 12 2023 Official - CBSE Academic", "url": "https://cbseacademic.nic.in/SQP_CLASSXII.html", "quality": "official", "verified": True},
+        {"title": "CBSE Class 12 2023 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2023/", "quality": "high"},
+        {"title": "CBSE 12th 2023 All Subjects", "url": "https://www.selfstudys.com/cbse/class-12th-question-paper/2023", "quality": "medium"},
     ],
     "cbse class 12 2022": [
-        {"title": "CBSE Class 12 2022 Term 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2022/"},
-        {"title": "CBSE 12th 2022 All Subjects", "url": "https://www.selfstudys.com/cbse/class-12th-question-paper/2022"},
+        {"title": "📜 CBSE Class 12 2022 Official - CBSE Academic", "url": "https://cbseacademic.nic.in/SQP_CLASSXII.html", "quality": "official", "verified": True},
+        {"title": "CBSE Class 12 2022 Term 1 & 2 - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2022/", "quality": "high"},
+        {"title": "CBSE 12th 2022 All Subjects", "url": "https://www.selfstudys.com/cbse/class-12th-question-paper/2022", "quality": "medium"},
     ],
     "cbse class 12 2021": [
-        {"title": "CBSE Class 12 2021 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2021/"},
-        {"title": "CBSE 12th 2021 All Subjects", "url": "https://www.selfstudys.com/cbse/class-12th-question-paper/2021"},
+        {"title": "📜 CBSE Class 12 2021 Official - CBSE Academic", "url": "https://cbseacademic.nic.in/SQP_CLASSXII.html", "quality": "official", "verified": True},
+        {"title": "CBSE Class 12 2021 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2021/", "quality": "high"},
+        {"title": "CBSE 12th 2021 All Subjects", "url": "https://www.selfstudys.com/cbse/class-12th-question-paper/2021", "quality": "medium"},
     ],
     "cbse class 12 2020": [
-        {"title": "CBSE Class 12 2020 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2020/"},
-        {"title": "CBSE 12th 2020 All Subjects", "url": "https://www.selfstudys.com/cbse/class-12th-question-paper/2020"},
+        {"title": "📜 CBSE Class 12 2020 Official - CBSE Academic", "url": "https://cbseacademic.nic.in/SQP_CLASSXII.html", "quality": "official", "verified": True},
+        {"title": "CBSE Class 12 2020 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2020/", "quality": "high"},
+        {"title": "CBSE 12th 2020 All Subjects", "url": "https://www.selfstudys.com/cbse/class-12th-question-paper/2020", "quality": "medium"},
     ],
     "cbse class 12 2019": [
-        {"title": "CBSE Class 12 2019 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2019/"},
+        {"title": "📜 CBSE Class 12 2019 Official - CBSE Academic", "url": "https://cbseacademic.nic.in/SQP_CLASSXII.html", "quality": "official", "verified": True},
+        {"title": "CBSE Class 12 2019 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2019/", "quality": "high"},
     ],
     "cbse class 12 2018": [
-        {"title": "CBSE Class 12 2018 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2018/"},
+        {"title": "📜 CBSE Class 12 2018 Official - CBSE Academic", "url": "https://cbseacademic.nic.in/SQP_CLASSXII.html", "quality": "official", "verified": True},
+        {"title": "CBSE Class 12 2018 Board Papers - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-2018/", "quality": "high"},
     ],
     "cbse class 12": [
-        {"title": "CBSE Class 12 All Years - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-question-papers/"},
-        {"title": "CBSE Official Sample Papers", "url": "https://cbseacademic.nic.in/SQP_CLASSXII.html"},
-        {"title": "CBSE 12th All Years - SelfStudys", "url": "https://www.selfstudys.com/cbse/class-12th-question-paper"},
+        {"title": "📜 CBSE Class 12 Official Sample Papers - CBSE", "url": "https://cbseacademic.nic.in/SQP_CLASSXII.html", "quality": "official", "verified": True},
+        {"title": "CBSE Class 12 All Years - AglaSem", "url": "https://schools.aglasem.com/tag/cbse-class-12-question-papers/", "quality": "high"},
+        {"title": "CBSE 12th All Years - SelfStudys", "url": "https://www.selfstudys.com/cbse/class-12th-question-paper", "quality": "medium"},
     ],
     
     # ═══════════════════════════════════════════════════════════
@@ -1176,9 +1240,9 @@ async def year_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     results = []
     seen_urls = set()
 
-    def add(title, url):
+    def add(title, url, quality="medium"):
         if url and url not in seen_urls:
-            results.append({"title": title[:80], "url": url})
+            results.append({"title": title[:80], "url": url, "quality": quality})
             seen_urls.add(url)
 
     base_key = EXAM_TO_KEY.get(exam_name, exam_name.lower())
@@ -1191,16 +1255,21 @@ async def year_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         results_static = STATIC_DB.get(base_key, [])
     
     for res in results_static:
-        add(res['title'], res['url'])
+        add(res['title'], res['url'], res.get('quality', 'medium'))
 
     # 3. IF NO STATIC DB MATCH, OR FOR "OLDER" PAPERS, FALLBACK TO SEARCH
     search_stats = ""
     if not results or year == "Older" or len(results) < 2:
         final_query = f"{exam_name} {year if year != 'Older' else ''} question paper pdf".strip()
         live_res, search_stats = await search_papers(final_query, limit=5-len(results))
-        for r in live_res: add(r['title'], r['url'])
+        for r in live_res: 
+            add(r['title'], r['url'], 'search')
+    
+    # Sort results by quality: official > high > medium > search
+    quality_order = {"official": 0, "high": 1, "medium": 2, "search": 3}
+    results.sort(key=lambda x: quality_order.get(x.get('quality', 'medium'), 2))
 
-    footer = f"\n\n---\n🤖 **ExamBot {BOT_VERSION}**"
+    footer = f"\n\n---\n🤖 **ExamBot {BOT_VERSION}**\n📜 = Official Govt Source | ⭐ = Verified Authentic"
 
     if not results:
         report = f"❌ **No results found for {exam_name} ({year}).**"
